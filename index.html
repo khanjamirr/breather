@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StepAway — take five, stay in sync</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+
+<!-- ================================================================
+     CONFIG — paste your Supabase project details here
+     (Supabase → Project Settings → API → Project URL / anon public key)
+     ================================================================ -->
+<script>
+window.STEPAWAY_CONFIG = window.STEPAWAY_CONFIG || {
+  SUPABASE_URL: "https://YOUR-PROJECT-REF.supabase.co",
+  SUPABASE_ANON_KEY: "YOUR-ANON-PUBLIC-KEY"
+};
+</script>
+
+<style>
+:root{
+  --bg:#0b0b12; --card:#14141f; --card2:#1c1c2b; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --ink:#f4f4f8; --ink2:#c9c9d6; --muted:#8d8da6;
+  --lime:#c6ff3d; --violet:#8b5cf6; --pink:#ff5fa2; --cyan:#3de0ff; --amber:#ffb86b; --danger:#ff5d6c; --good:#5ef2b0;
+  --r:20px; --font:"Inter",system-ui,sans-serif; --display:"Bricolage Grotesque","Inter",sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+html,body{margin:0;min-height:100%;color:var(--ink);font-family:var(--font);font-size:15px;-webkit-font-smoothing:antialiased}
+/* live theme: drifting aurora blobs + particles, colours follow the clock or the picked theme */
+:root{--b1:#8b5cf6;--b2:#ff5fa2;--b3:#3de0ff}
+#bg{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
+#bg .blob{position:absolute;width:55vmax;height:55vmax;border-radius:50%;filter:blur(90px);opacity:.34;transition:background 3s ease,opacity 1s}
+#bg .b1{background:var(--b1);top:-24vmax;left:-14vmax;animation:drift1 24s ease-in-out infinite alternate}
+#bg .b2{background:var(--b2);top:-18vmax;right:-20vmax;animation:drift2 31s ease-in-out infinite alternate}
+#bg .b3{background:var(--b3);bottom:-30vmax;left:20vw;animation:drift3 37s ease-in-out infinite alternate}
+@keyframes drift1{to{transform:translate(22vw,18vh) scale(1.18)}}
+@keyframes drift2{to{transform:translate(-24vw,22vh) scale(.88)}}
+@keyframes drift3{to{transform:translate(-14vw,-20vh) scale(1.12)}}
+body.calm #bg .blob{opacity:.13}
+#particles{position:fixed;inset:0;z-index:-1;pointer-events:none}
+@media (prefers-reduced-motion: reduce){#bg .blob{animation:none}#particles{display:none}}
+.livepill{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(255,255,255,.08);border:1px solid var(--line2)}
+.livepill i{width:7px;height:7px;border-radius:50%;background:var(--b3);box-shadow:0 0 0 0 var(--b3);animation:pulse 1.8s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.themes{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.themes button{display:flex;align-items:center;gap:10px;padding:10px;border-radius:14px;border:1px solid var(--line2);background:var(--card2);text-align:left;font-weight:600;font-size:13.5px}
+.themes button.on{border-color:var(--lime);box-shadow:0 0 0 2px rgba(198,255,61,.25)}
+.themes .sw{width:42px;height:42px;border-radius:12px;flex:none}
+.dragbm{display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:14px;background:var(--lime);color:#111;font-weight:800;text-decoration:none;cursor:grab;font-size:15px}
+.howto{background:var(--card2);border-radius:14px;padding:12px 14px;font-size:13.5px;line-height:1.55;color:var(--ink2);margin-top:10px}
+.kbd{font-family:var(--mono);font-size:12px;background:#000;border:1px solid var(--line2);border-bottom-width:3px;border-radius:7px;padding:1px 7px}
+.rolechip{font-size:12px;font-weight:700;color:var(--ink2)}
+button{font-family:inherit;cursor:pointer;color:inherit}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--ink)}
+a{color:var(--cyan)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)} .small{font-size:12.5px}
+.hidden{display:none!important}
+h1,h2,h3{font-family:var(--display);letter-spacing:-.02em;margin:0}
+h1{font-size:34px;font-weight:800} h2{font-size:20px;font-weight:700;margin-bottom:14px} h3{font-size:16px;font-weight:700}
+.grad{background:linear-gradient(90deg,var(--lime),var(--cyan) 45%,var(--violet) 80%,var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* top bar */
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 24px;
+  background:rgba(11,11,18,.72);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:20px}
+.brand .v{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--lime);color:#111}
+.top .right{display:flex;align-items:center;gap:14px}
+.clock{font-family:var(--mono);font-size:13px;color:var(--ink2)}
+@media(max-width:640px){.clock{display:none}.top{padding:10px 14px}}
+
+main{max-width:1280px;margin:0 auto;padding:26px 24px 60px}
+@media(max-width:640px){main{padding:18px 14px 50px}}
+
+/* basics */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.btn{border:1px solid var(--line2);background:var(--card2);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;transition:.15s;white-space:nowrap}
+.btn:hover{border-color:rgba(255,255,255,.3);transform:translateY(-1px)}
+.btn.lime{background:var(--lime);border-color:var(--lime);color:#111}
+.btn.violet{background:var(--violet);border-color:var(--violet);color:#fff}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.input{width:100%;background:#0f0f18;border:1px solid var(--line2);border-radius:12px;padding:11px 13px;outline:none}
+.input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(139,92,246,.25)}
+select.input{appearance:auto}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.field label{font-size:12.5px;font-weight:600;color:var(--muted)}
+.err{color:var(--danger);font-size:13px;min-height:18px;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:rgba(198,255,61,.12);color:var(--lime);white-space:nowrap}
+.pill.warn{background:rgba(255,184,107,.14);color:var(--amber)}
+.pill.danger{background:rgba(255,93,108,.15);color:var(--danger)}
+.pill.grey{background:rgba(255,255,255,.07);color:var(--ink2)}
+.pill.violet{background:rgba(139,92,246,.18);color:#c4b0ff}
+.row{display:flex;align-items:center;gap:10px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.empty{color:var(--muted);text-align:center;padding:18px 0;font-size:14px}
+
+/* login */
+.login-wrap{min-height:calc(100vh - 140px);display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:40px;align-items:center}
+@media(max-width:900px){.login-wrap{grid-template-columns:minmax(0,1fr);gap:24px}}
+.hero h1{font-size:clamp(40px,6vw,72px);line-height:.98;font-weight:800}
+.hero p{font-size:17px;color:var(--ink2);max-width:520px;line-height:1.55;margin:18px 0 0}
+.stickers{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.sticker{padding:8px 14px;border-radius:999px;border:1px solid var(--line2);background:var(--card);font-weight:600;font-size:13.5px;transform:rotate(var(--rot,0deg))}
+.login-card{padding:32px}
+.login-card .idin{font-family:var(--mono);font-size:24px;letter-spacing:4px;text-align:center;padding:16px}
+.login-card .btn{width:100%;padding:14px;font-size:16px;margin-top:6px}
+.fact-tick{margin-top:18px;padding:14px 16px;border-radius:14px;background:var(--card2);border:1px dashed var(--line2);font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.fact-tick b{color:var(--lime)}
+
+/* employee */
+.emp-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.avatar-btn{width:62px;height:62px;border-radius:20px;font-size:34px;background:var(--card2);border:1px solid var(--line2);display:grid;place-items:center;transition:.15s}
+.avatar-btn:hover{transform:rotate(-6deg) scale(1.05)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+@media(max-width:1060px){.layout{grid-template-columns:minmax(0,1fr)}}
+.side{display:flex;flex-direction:column;gap:20px}
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:14px}
+.bcard{position:relative;overflow:hidden;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:6px;min-height:150px;transition:.18s}
+.bcard::after{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;background:var(--c);opacity:.13;filter:blur(6px);transition:.2s}
+.bcard:hover{border-color:var(--c);transform:translateY(-3px)}
+.bcard:hover::after{opacity:.28;transform:scale(1.2)}
+.bcard .ic{font-size:30px}
+.bcard .nm{font-weight:700;font-size:15.5px}
+.bcard .vb{font-size:12.5px;color:var(--muted);line-height:1.4}
+.bcard .lm{margin-top:auto;font-family:var(--mono);font-size:11.5px;color:var(--c)}
+.fact-card{margin-top:20px;display:flex;gap:16px;align-items:flex-start;background:linear-gradient(135deg,rgba(139,92,246,.16),rgba(61,224,255,.08));border:1px solid rgba(139,92,246,.35)}
+.fact-card .big{font-size:34px}
+.fact-card p{margin:6px 0 10px;line-height:1.55;color:var(--ink2)}
+
+.onbreak{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px}
+@media(max-width:760px){.onbreak{grid-template-columns:minmax(0,1fr)}}
+.ring-card{text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+.ring{position:relative;width:220px;height:220px}
+.ring svg{transform:rotate(-90deg)}
+.ring .in{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.ring .t{font-family:var(--mono);font-size:40px;font-weight:700}
+.ring .ic{font-size:30px}
+.ring-card .btn{width:100%;padding:14px;font-size:15.5px}
+
+/* arcade */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tab{padding:8px 14px;border-radius:999px;border:1px solid var(--line2);background:transparent;font-weight:600;font-size:13px;color:var(--ink2)}
+.tab.on{background:var(--ink);color:#111;border-color:var(--ink)}
+.game{min-height:330px}
+.react{height:260px;border-radius:18px;display:grid;place-items:center;text-align:center;font-family:var(--display);font-size:28px;font-weight:800;user-select:none;cursor:pointer;transition:background .1s}
+.react.idle{background:var(--card2)} .react.wait{background:#3a1520;color:var(--danger)} .react.go{background:var(--lime);color:#111} .react.res{background:#1e1840}
+.react small{display:block;font-family:var(--font);font-size:13px;font-weight:500;opacity:.8;margin-top:6px}
+.mem{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-width:380px;margin:0 auto}
+.mem button{aspect-ratio:1;border-radius:14px;border:1px solid var(--line2);background:var(--card2);font-size:30px;transition:.2s}
+.mem button.open{background:#24203d;border-color:var(--violet)}
+.mem button.done{background:rgba(198,255,61,.12);border-color:rgba(198,255,61,.5)}
+.mem button span{transition:.15s}
+.mem button:not(.open):not(.done) span{opacity:0}
+.ttt{display:grid;grid-template-columns:repeat(3,84px);gap:8px;justify-content:center}
+.ttt button{width:84px;height:84px;border-radius:16px;border:1px solid var(--line2);background:var(--card2);font-size:38px;font-weight:800;font-family:var(--display)}
+.ttt button.x{color:var(--lime)} .ttt button.o{color:var(--pink)}
+.breathe{height:280px;display:grid;place-items:center;position:relative}
+.bubble{width:110px;height:110px;border-radius:50%;background:radial-gradient(circle at 35% 35%,var(--cyan),var(--violet));box-shadow:0 0 60px rgba(139,92,246,.6);animation:breathe 16s ease-in-out infinite}
+@keyframes breathe{0%{transform:scale(.7)}25%{transform:scale(1.6)}50%{transform:scale(1.6)}75%{transform:scale(.7)}100%{transform:scale(.7)}}
+.breathe .lbl{position:absolute;bottom:4px;font-family:var(--display);font-weight:700;font-size:20px}
+
+/* side widgets */
+.mini-list .it{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.mini-list .it:last-child{border-bottom:none}
+.mini-list .av{width:34px;height:34px;border-radius:11px;background:var(--card2);display:grid;place-items:center;font-size:19px;flex:none}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.st{background:var(--card2);border-radius:14px;padding:12px 14px}
+.st .k{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.st .v{font-family:var(--display);font-size:24px;font-weight:800;margin-top:2px}
+
+/* lounge chat */
+.lounge{display:flex;flex-direction:column;height:520px;padding:0;overflow:hidden}
+.lounge .lh{padding:16px 18px 10px}
+.lounge .chtabs{display:flex;gap:6px;padding:0 18px 10px;overflow-x:auto}
+.lounge .chtabs button{padding:5px 11px;border-radius:999px;border:1px solid var(--line2);background:transparent;font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap}
+.lounge .chtabs button.on{background:var(--violet);border-color:var(--violet);color:#fff}
+.msgs{flex:1;overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(0,0,0,.18)}
+.msg{display:flex;gap:9px;align-items:flex-end;max-width:92%}
+.msg .av{width:28px;height:28px;border-radius:9px;background:var(--card2);display:grid;place-items:center;font-size:16px;flex:none}
+.msg > div:last-child{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.msg.mine > div:last-child{align-items:flex-end}
+.msg .bub{width:fit-content;max-width:100%;background:var(--card2);border-radius:14px 14px 14px 4px;padding:8px 11px;font-size:14px;line-height:1.4;word-wrap:break-word;overflow-wrap:anywhere}
+.msg .meta{font-size:11px;color:var(--muted);margin-bottom:2px;display:flex;gap:6px;align-items:center}
+.msg.mine{align-self:flex-end;flex-direction:row-reverse}
+.msg.mine .bub{background:var(--violet);border-radius:14px 14px 4px 14px}
+.msg.isadm .bub{background:rgba(255,184,107,.16);border:1px solid rgba(255,184,107,.35)}
+.msg .del{background:none;border:none;color:var(--danger);font-size:11px;padding:0 2px}
+.composer{display:flex;gap:8px;padding:10px 12px}
+.composer .input{padding:10px 12px}
+.quick{display:flex;gap:4px;padding:0 12px 12px}
+.quick button{background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:4px 8px;font-size:15px}
+
+/* admin */
+.adm{display:grid;grid-template-columns:230px minmax(0,1fr);gap:22px;align-items:start}
+@media(max-width:900px){.adm{grid-template-columns:minmax(0,1fr)}}
+.nav{display:flex;flex-direction:column;gap:4px;position:sticky;top:80px}
+@media(max-width:900px){.nav{flex-direction:row;overflow-x:auto;position:static}}
+.nav button{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:12px;border:none;background:transparent;font-weight:600;font-size:14px;color:var(--ink2);text-align:left;white-space:nowrap}
+.nav button:hover{background:var(--card)}
+.nav button.on{background:var(--card2);color:var(--ink);box-shadow:inset 3px 0 0 var(--lime)}
+.nav .badge{margin-left:auto;background:var(--danger);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.kpi .k{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .v{font-family:var(--display);font-size:28px;font-weight:800;margin-top:4px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr.voided td{opacity:.42;text-decoration:line-through} tr.voided td:last-child{opacity:1;text-decoration:none}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.filters .field{margin:0;min-width:140px}
+.req{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border-radius:14px;background:rgba(255,184,107,.08);border:1px solid rgba(255,184,107,.35);margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media(max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.drop{border:2px dashed var(--line2);border-radius:18px;padding:30px;text-align:center;transition:.15s;cursor:pointer}
+.drop.over{border-color:var(--lime);background:rgba(198,255,61,.05)}
+.meter{height:10px;border-radius:6px;background:var(--card2);overflow:hidden}
+.meter>i{display:block;height:100%;background:var(--lime);border-radius:6px}
+
+/* charts (single-series magnitude → one hue) */
+.hbar{display:grid;grid-template-columns:190px minmax(0,1fr) 92px;gap:10px;align-items:center;padding:5px 0;font-size:13px}
+.hbar .tr{height:12px;background:rgba(255,255,255,.04);border-radius:4px}
+.hbar .tr i{display:block;height:100%;background:var(--violet);border-radius:0 4px 4px 0;min-width:2px}
+.hbar .val{text-align:right;font-family:var(--mono);font-size:12px;color:var(--ink2)}
+.vchart{display:flex;align-items:flex-end;gap:2px;height:170px;padding-top:8px;border-bottom:1px solid var(--line2)}
+.vchart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;min-width:0}
+.vchart .col i{display:block;background:var(--violet);border-radius:4px 4px 0 0;min-height:1px}
+.vchart .col:hover i{background:#a98bff}
+.vlabels{display:flex;gap:2px;margin-top:6px}
+.vlabels span{flex:1;text-align:center;font-size:10.5px;color:var(--muted);min-width:0;overflow:hidden;white-space:nowrap}
+#tip{position:fixed;z-index:90;pointer-events:none;background:#000;border:1px solid var(--line2);border-radius:10px;padding:7px 10px;font-size:12.5px;max-width:260px;display:none}
+
+/* modal / toast */
+.overlay{position:fixed;inset:0;background:rgba(5,5,10,.7);backdrop-filter:blur(6px);display:grid;place-items:center;z-index:50;padding:18px}
+.modal{background:var(--card);border:1px solid var(--line2);border-radius:22px;max-width:460px;width:100%;padding:24px;max-height:90vh;overflow:auto}
+.modal h3{font-size:20px;margin-bottom:6px}
+.modal p{color:var(--ink2);margin:0 0 14px;font-size:14px;line-height:1.5}
+.modal .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+.vibes{display:flex;gap:8px;justify-content:space-between;margin:6px 0 8px}
+.vibes button{flex:1;background:var(--card2);border:1px solid var(--line2);border-radius:14px;padding:12px 4px;font-size:30px;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.15s}
+.vibes button span{font-size:11px;color:var(--muted);font-weight:600}
+.vibes button:hover{border-color:var(--lime);transform:translateY(-3px)}
+.avgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.avgrid button{aspect-ratio:1;font-size:26px;border-radius:12px;border:1px solid var(--line2);background:var(--card2)}
+.avgrid button.on{border-color:var(--lime);background:rgba(198,255,61,.12)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#111;font-weight:600;padding:11px 18px;border-radius:12px;font-size:14px;z-index:95;box-shadow:0 10px 30px rgba(0,0,0,.4);animation:pop .25s ease}
+@keyframes pop{from{transform:translate(-50%,10px);opacity:0}}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:96}
+.setup{max-width:720px;margin:40px auto}
+.setup code{background:var(--card2);padding:2px 6px;border-radius:6px;font-family:var(--mono);font-size:13px}
+.setup ol li{margin-bottom:10px;line-height:1.55;color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.1</span></div>
+  <div class="right"><span class="clock" id="clock"></span><span class="rolechip" id="who"></span><button class="btn sm ghost" id="bmBtn" title="Bookmark or install StepAway">⭐ Bookmark</button><button class="btn sm" id="topBtn"></button></div>
+</div>
+<main id="app"></main>
+<div id="modalRoot"></div>
+<div id="tip"></div>
+<canvas id="confetti"></canvas>
+<div id="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<canvas id="particles"></canvas>
+
+<script>
+/* =====================================================================
+   CONSTANTS
+   ===================================================================== */
+const CFG = window.STEPAWAY_CONFIG;
+const BT = [
+  {c:1, icon:"🚻", name:"Restroom Break",           vibe:"nature's calling — brb",              col:"#3de0ff"},
+  {c:2, icon:"☕", name:"Tea / Coffee Break",       vibe:"caffeine refill incoming",            col:"#ffb86b"},
+  {c:3, icon:"🍱", name:"Meal Break",               vibe:"lunch or dinner — go fuel up",        col:"#c6ff3d"},
+  {c:4, icon:"🎮", name:"Recreational Break",       vibe:"game room, a walk, touch some grass", col:"#8b5cf6"},
+  {c:5, icon:"🚬", name:"Smoking Break",            vibe:"designated area only, please",        col:"#9aa3b2"},
+  {c:6, icon:"🧘", name:"Wellness & Refresh Break", vibe:"reset, recharge, re-vibe",            col:"#5ef2b0"},
+  {c:7, icon:"🌸", name:"Personal Health Break",    vibe:"private · personal & women's health", col:"#ff5fa2", priv:true},
+  {c:8, icon:"✏️", name:"Other (please specify)",   vibe:"something else? tell us what's up",   col:"#f5e663"},
+];
+const BTM = Object.fromEntries(BT.map(b=>[b.c,b]));
+BTM[0] = {c:0, icon:"🌙", name:"Taking a moment", col:"#8d8da6"};
+const DEFAULT_LIMITS = {1:10,2:15,3:45,4:15,5:10,6:10,7:20,8:15};
+const VIBES = [[1,"😫","drained"],[2,"😐","meh"],[3,"🙂","okay"],[4,"😄","good"],[5,"🤩","recharged"]];
+const AVATARS = ["😎","🦊","🐼","🐸","🦄","🐱","🐶","🐯","🐨","🐵","🦁","🐙","👾","🤖","👻","🌻","🍕","🍩","🧋","🎧","🎮","🚀","⚡","🌈","🔥","💎","🍀","🌙","🐧","🦋"];
+const ADMIN_IDLE_MIN = 15;
+const FACTS = [
+  "Octopuses have three hearts and blue blood.",
+  "Bananas are botanically berries — strawberries aren't.",
+  "A day on Venus is longer than a year on Venus.",
+  "Wombat poop is cube-shaped. Nature said: make it stackable.",
+  "Sharks have been around longer than trees.",
+  "The Eiffel Tower grows around 15 cm taller in summer as the iron expands.",
+  "Sea otters hold hands while sleeping so they don't drift apart.",
+  "A group of flamingos is called a 'flamboyance'.",
+  "The shortest war in history — Anglo-Zanzibar, 1896 — lasted under an hour.",
+  "Your brain uses roughly 20% of your body's energy. Snacks are self-care.",
+  "Butterflies taste with their feet.",
+  "There are more possible chess games than atoms in the observable universe.",
+  "Koala fingerprints are so similar to ours they could confuse a crime scene.",
+  "The first computer 'bug' was a real moth found in a Harvard computer in 1947.",
+  "A lightning bolt is about five times hotter than the surface of the Sun.",
+  "Gentoo penguins 'propose' with the smoothest pebble they can find.",
+  "Scotland's national animal is the unicorn.",
+  "A short walk can noticeably boost creative thinking — Stanford researchers tested it.",
+  "Slow-blinking at a cat is cat language for 'I'm friendly'.",
+  "The inventor of the Pringles can had some of his ashes buried in one.",
+  "Saturn is less dense than water — in a big enough bathtub, it would float.",
+  "Tardigrades can survive the vacuum of space.",
+  "'Emoji' comes from Japanese e (picture) + moji (character) — not from 'emotion'.",
+  "The 😂 emoji was Oxford Dictionaries' Word of the Year in 2015.",
+  "Crows can recognise human faces — and remember who annoyed them.",
+  "Bubble wrap was originally invented to be textured wallpaper.",
+  "India Post runs the largest postal network in the world.",
+  "Chess traces back to 'chaturanga', a game from ancient India.",
+  "Snakes & Ladders began in India as 'Moksha Patam', a game about karma.",
+  "Lonar Lake in Maharashtra sits in a crater made by a meteorite.",
+  "Mawsynram in Meghalaya is often called the wettest place on Earth.",
+  "A pineapple plant takes around 18–24 months to grow one pineapple.",
+  "An average cumulus cloud weighs around 500 tonnes — and still floats.",
+  "Honey doesn't spoil — edible honey has been found in ancient Egyptian tombs.",
+  "Cows have regional 'accents' in their moos, according to some researchers.",
+  "Your nose and ears keep growing (very slowly) throughout your life.",
+];
+
+/* =====================================================================
+   STATE + STORAGE
+   ===================================================================== */
+const S = {
+  view: "emp", empToken:null, admToken:null, emp:null, ov:null, offset:0,
+  admTab:"live", timers:{}, lounge:null, lastActiveKey:null, admLast:Date.now(), arcadeTab:"react", factIdx:Math.floor(Math.random()*FACTS.length)
+};
+const ls = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,v); }catch(e){} },
+};
+const ss = {
+  get(k){ try{ return sessionStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ v==null?sessionStorage.removeItem(k):sessionStorage.setItem(k,v); }catch(e){} },
+};
+S.empToken = ls.get("sa2_emp_token");
+S.admToken = ss.get("sa2_adm_token");
+
+/* =====================================================================
+   API (Supabase PostgREST RPC — no SDK needed)
+   ===================================================================== */
+const configured = () => CFG && CFG.SUPABASE_URL && !/YOUR-PROJECT/.test(CFG.SUPABASE_URL) && CFG.SUPABASE_ANON_KEY && !/YOUR-ANON/.test(CFG.SUPABASE_ANON_KEY);
+async function rpc(fn, args={}){
+  let res;
+  try{
+    res = await fetch(`${CFG.SUPABASE_URL.replace(/\/$/,"")}/rest/v1/rpc/${fn}`, {
+      method:"POST",
+      headers:{ "apikey":CFG.SUPABASE_ANON_KEY, "Authorization":`Bearer ${CFG.SUPABASE_ANON_KEY}`, "Content-Type":"application/json" },
+      body: JSON.stringify(args)
+    });
+  }catch(e){ throw new Error("Can't reach the server. Check your internet connection."); }
+  const txt = await res.text();
+  let data = null; try{ data = txt ? JSON.parse(txt) : null; }catch(e){ data = txt; }
+  if(!res.ok){
+    const msg = (data && data.message) || res.statusText || "Something went wrong";
+    if(msg.includes("SESSION_ENDED")){ onEmpSessionEnded(); throw new Error("SESSION_ENDED"); }
+    if(msg.includes("ADMIN_AUTH")){ onAdminExpired(); throw new Error("Admin session expired. Please sign in again."); }
+    if(msg.includes("PASSWORD_CHANGE_REQUIRED")){ if(S.view==="admin"){ if(S.me) S.me.must_change=true; clearTimers(); renderForcePw(); } throw new Error("Please set a new password first."); }
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/* =====================================================================
+   HELPERS
+   ===================================================================== */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const esc = s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = n=>String(n).padStart(2,"0");
+const now = ()=>Date.now()+S.offset;
+const midnight = (d=new Date())=>{ const x=new Date(d); x.setHours(0,0,0,0); return x; };
+const ymd = d=>{ d=new Date(d); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const fromYmd = s=>{ const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
+const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+function fmtClock(ms){ if(ms<0)ms=0; const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60; return h?`${h}:${pad(m)}:${pad(x)}`:`${pad(m)}:${pad(x)}`; }
+function fmtMin(min){ min=Math.round(min); return min<60?`${min}m`:`${Math.floor(min/60)}h ${min%60}m`; }
+const fmtTime = t=>t?new Date(t).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"—";
+const fmtDate = t=>new Date(t).toLocaleDateString([], {day:"2-digit",month:"short",year:"numeric"});
+const firstName = n=>String(n||"").split(" ")[0];
+const limitOf = (t, limits)=>Number((limits||{})[t] ?? DEFAULT_LIMITS[t] ?? 15);
+const fmtBytes = b=>b<1024?`${b} B`:b<1048576?`${(b/1024).toFixed(1)} KB`:`${(b/1048576).toFixed(1)} MB`;
+
+function toast(msg){ $$(".toast").forEach(t=>t.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2800); }
+
+function modal({title, text="", body="", okText="Confirm", okClass="lime", onOk, cancel=true, cancelText="Cancel", wide=false}){
+  const root=$("#modalRoot");
+  root.innerHTML=`<div class="overlay"><div class="modal" ${wide?'style="max-width:620px"':''}>
+    <h3>${title}</h3>${text?`<p>${text}</p>`:""}${body}
+    <div class="err" id="mErr"></div>
+    <div class="actions">${cancel?`<button class="btn ghost" id="mCancel">${cancelText}</button>`:""}${okText?`<button class="btn ${okClass}" id="mOk">${okText}</button>`:""}</div>
+  </div></div>`;
+  const close=()=>root.innerHTML="";
+  if(cancel) $("#mCancel").onclick=close;
+  const first=root.querySelector("input,textarea"); if(first) setTimeout(()=>first.focus(),30);
+  $$("input",root).forEach(i=>i.addEventListener("keydown",ev=>{ if(ev.key==="Enter" && $("#mOk")) $("#mOk").click(); }));
+  if($("#mOk")) $("#mOk").onclick=async()=>{
+    const b=$("#mOk"); b.disabled=true;
+    try{ const r=onOk?await onOk(root):true; if(r===true||r===undefined) close(); else if(typeof r==="string") $("#mErr").textContent=r; }
+    catch(e){ if(e.message!=="SESSION_ENDED") $("#mErr").textContent=e.message; }
+    if($("#mOk")) $("#mOk").disabled=false;
+  };
+  return {root, close};
+}
+const modalOpen = ()=>!!$("#modalRoot .overlay");
+
+/* hover tooltip for chart marks */
+document.addEventListener("mousemove",e=>{
+  const el=e.target.closest("[data-tip]"), tip=$("#tip");
+  if(!el){ tip.style.display="none"; return; }
+  tip.innerHTML=el.dataset.tip; tip.style.display="block";
+  const x=Math.min(e.clientX+14, innerWidth-tip.offsetWidth-8), y=Math.min(e.clientY+14, innerHeight-tip.offsetHeight-8);
+  tip.style.left=x+"px"; tip.style.top=y+"px";
+});
+
+/* confetti */
+function confetti(){
+  const c=$("#confetti"), x=c.getContext("2d"); c.width=innerWidth; c.height=innerHeight;
+  const cols=["#c6ff3d","#3de0ff","#8b5cf6","#ff5fa2","#ffb86b"];
+  const P=Array.from({length:140},()=>({x:innerWidth/2,y:innerHeight*0.35,vx:(Math.random()-.5)*16,vy:Math.random()*-14-4,r:Math.random()*6+3,c:cols[Math.floor(Math.random()*cols.length)],a:Math.random()*6}));
+  let f=0; (function step(){ x.clearRect(0,0,c.width,c.height); P.forEach(p=>{ p.vy+=.45; p.x+=p.vx; p.y+=p.vy; p.a+=.2; x.save(); x.translate(p.x,p.y); x.rotate(p.a); x.fillStyle=p.c; x.fillRect(-p.r/2,-p.r/2,p.r,p.r*.6); x.restore(); });
+    if(++f<120) requestAnimationFrame(step); else x.clearRect(0,0,c.width,c.height); })();
+}
+
+function clearTimers(){ Object.values(S.timers).forEach(clearInterval); S.timers={}; stopLounge(); }
+
+/* =====================================================================
+   ROUTER
+   ===================================================================== */
+function go(view){ S.view=view; clearTimers(); S.lastActiveKey=null; boot(); }
+function boot(){
+  const tb=$("#topBtn");
+  $("#who").textContent="";
+  document.body.classList.toggle("calm", S.view!=="emp");
+  $("#bmBtn").onclick=bookmarkModal;
+  if(!configured()) { tb.classList.add("hidden"); return renderSetup(); }
+  tb.classList.remove("hidden");
+  if(S.view==="admin"){
+    if(!S.admToken){ S.view="adminLogin"; return boot(); }
+    tb.textContent="Sign out admin"; tb.onclick=()=>adminSignOut("Signed out of admin console");
+    return renderAdmin();
+  }
+  if(S.view==="adminLogin"){ tb.textContent="← Employee sign-in"; tb.onclick=()=>go("emp"); return renderAdminLogin(); }
+  tb.textContent="🔐 Admin"; tb.onclick=()=>go(S.admToken?"admin":"adminLogin");
+  if(S.empToken) return bootEmployee();
+  renderLogin();
+}
+setInterval(()=>{ $("#clock").textContent=new Date().toLocaleString([], {weekday:"short",day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}); },1000);
+
+function renderSetup(){
+  $("#app").innerHTML=`<div class="card setup">
+    <h1>Almost there <span class="grad">✨</span></h1>
+    <p class="muted" style="margin:10px 0 18px">StepAway needs your Supabase project before it can run.</p>
+    <ol>
+      <li>Create a free project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.</li>
+      <li>Open <b>SQL Editor → New query</b>, paste all of <code>supabase-schema.sql</code> and press <b>Run</b>.</li>
+      <li>Go to <b>Project Settings → API</b> and copy the <b>Project URL</b> and the <b>anon public</b> key.</li>
+      <li>Paste both into the <code>STEPAWAY_CONFIG</code> block near the top of <code>index.html</code>, then redeploy on Vercel.</li>
+    </ol>
+  </div>`;
+}
+
+/* =====================================================================
+   EMPLOYEE — LOGIN
+   ===================================================================== */
+function renderLogin(){
+  $("#app").innerHTML=`<div class="login-wrap">
+    <div class="hero">
+      <h1>Take five.<br><span class="grad">Stay in sync.</span></h1>
+      <p>Log your breaks in one tap, let the squad know you've stepped away, and play a quick game while you recharge.</p>
+      <div class="stickers">
+        <span class="sticker" style="--rot:-3deg">☕ coffee o'clock</span>
+        <span class="sticker" style="--rot:2deg">🎮 mini games</span>
+        <span class="sticker" style="--rot:-1deg">💬 team lounge</span>
+        <span class="sticker" style="--rot:3deg">🧠 fun facts</span>
+      </div>
+    </div>
+    <div class="card login-card">
+      <h2 style="margin-bottom:4px">Sign in</h2>
+      <p class="muted" style="margin:0 0 18px">Drop your employee ID 👇</p>
+      <input class="input idin" id="empId" placeholder="Employee ID" autocomplete="off" maxlength="20">
+      <div class="err" id="loginErr"></div>
+      <button class="btn lime" id="loginBtn">Let's go →</button>
+      <p class="muted small" style="line-height:1.5;margin:14px 0 0">Your session stays locked to your ID — signing out needs an admin's OK, so nobody can log entries under your name.</p>
+      <div class="fact-tick"><b>did you know?</b> ${esc(FACTS[S.factIdx])}</div>
+      <button class="btn ghost sm" id="toAdmin" style="margin-top:14px;width:auto">🔐 Admin login</button>
+    </div>
+  </div>`;
+  const inp=$("#empId"); inp.focus();
+  const goLogin=async()=>{
+    const id=inp.value.trim(); if(!id) return $("#loginErr").textContent="Please enter your Employee ID.";
+    $("#loginBtn").disabled=true;
+    try{ const r=await rpc("emp_login",{p_id:id}); S.empToken=r.token; ls.set("sa2_emp_token",r.token); bootEmployee(); }
+    catch(e){ $("#loginErr").textContent=e.message; $("#loginBtn").disabled=false; }
+  };
+  $("#loginBtn").onclick=goLogin;
+  inp.addEventListener("keydown",e=>{ if(e.key==="Enter") goLogin(); });
+  $("#toAdmin").onclick=()=>go("adminLogin");
+}
+
+function onEmpSessionEnded(){
+  if(!S.empToken) return;
+  S.empToken=null; ls.set("sa2_emp_token",null); S.emp=null;
+  $("#modalRoot").innerHTML="";
+  if(S.view==="emp"){ clearTimers(); S.lastActiveKey=null; renderLogin(); toast("You've been signed out by an admin. See ya 👋"); }
+}
+
+/* =====================================================================
+   EMPLOYEE — HOME
+   ===================================================================== */
+async function loadEmp(){
+  const st = await rpc("emp_state",{p_token:S.empToken, p_since:midnight().toISOString()});
+  S.emp = st; S.offset = new Date(st.now).getTime()-Date.now();
+  return st;
+}
+async function bootEmployee(){
+  $("#app").innerHTML=`<div class="empty" style="padding:80px 0">loading your vibe…</div>`;
+  try{ await loadEmp(); }catch(e){ if(e.message!=="SESSION_ENDED"){ $("#app").innerHTML=`<div class="card empty">${esc(e.message)} <br><br><button class="btn" onclick="boot()">Retry</button></div>`; } return; }
+  $("#app").innerHTML=`<div id="empHead"></div><div class="layout"><div id="empMain"></div><div class="side" id="empSide">
+      <div class="card" id="wStats"></div><div class="card" id="wAway"></div><div class="card lounge" id="wLounge"></div><div class="card" id="wBoard"></div></div></div>`;
+  const me=S.emp.me;
+  const chans=[{id:"all",label:"# general"},{id:"fun",label:"# memes-n-vibes"}];
+  if(me.dept) chans.push({id:"d:"+me.dept,label:"# "+me.dept.toLowerCase().replace(/\s+/g,"-")});
+  mountLounge($("#wLounge"),{token:S.empToken, channels:chans, admin:false});
+  updateEmp();
+  S.timers.poll=setInterval(async()=>{ if(document.hidden) return; try{ await loadEmp(); updateEmp(); }catch(e){} },10000);
+  S.timers.tick=setInterval(tickEmp,1000);
+}
+
+function todayStats(){
+  const list=(S.emp.today||[]).filter(x=>x.f!==1);
+  const lim=S.emp.limits;
+  const done=list.filter(x=>x.e).sort((a,b)=>new Date(b.s)-new Date(a.s));
+  let streak=0; for(const x of done){ if((new Date(x.e)-new Date(x.s))/60000<=limitOf(x.t,lim)) streak++; else break; }
+  const mins=list.reduce((s,x)=>s+((x.e?new Date(x.e).getTime():now())-new Date(x.s).getTime())/60000,0);
+  const moods=list.filter(x=>x.mood); const mood=moods.length?moods.reduce((s,x)=>s+x.mood,0)/moods.length:null;
+  return {n:list.length, mins, streak, mood};
+}
+
+function updateEmp(){
+  const st=S.emp; if(!st) return;
+  const me=st.me, sess=st.session||{}, act=st.active;
+  // header
+  $("#empHead").innerHTML=`<div class="emp-head">
+    <div class="row" style="gap:14px">
+      <button class="avatar-btn" id="avBtn" title="Change avatar">${esc(me.avatar)}</button>
+      <div><h1 style="font-size:30px">${esc(S.theme.greet)}, ${esc(firstName(me.name))} ${S.theme.icon}</h1>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">
+          <button class="livepill" id="themeBtn" title="Change theme"><i></i>${S.theme.key==="live"?"live":""} ${S.theme.icon} ${esc(S.theme.name)} · 🎨</button>
+          <span class="pill grey mono">ID ${esc(me.id)}</span>${me.dept?`<span class="pill grey">${esc(me.dept)}</span>`:""}
+          ${act?`<span class="pill warn">● on a break</span>`:`<span class="pill">● at desk</span>`}
+          <span class="muted small">signed in ${fmtTime(sess.login_at)} · ${st.online} online</span>
+        </div></div>
+    </div>
+    <div>${sess.req_at
+      ? `<div class="row" style="flex-wrap:wrap;justify-content:flex-end"><span class="pill warn">sign-out requested · waiting on admin</span>
+          <button class="btn sm" id="cancelReq">Cancel</button><button class="btn sm violet" id="approveHere">Admin: approve here</button></div>`
+      : `<button class="btn" id="reqOut">Request sign-out</button>`}</div>
+  </div>`;
+  $("#avBtn").onclick=pickAvatar; $("#themeBtn").onclick=pickTheme;
+  if($("#reqOut")) $("#reqOut").onclick=()=>{
+    if(act) return toast("End your current break first ✋");
+    modal({title:"Request sign-out?",text:"An admin needs to approve before your session closes. You can keep using StepAway meanwhile.",okText:"Send request",
+      onOk:async()=>{ await rpc("emp_signout_request",{p_token:S.empToken,p_on:true}); await loadEmp(); updateEmp(); }});
+  };
+  if($("#cancelReq")) $("#cancelReq").onclick=async()=>{ try{ await rpc("emp_signout_request",{p_token:S.empToken,p_on:false}); await loadEmp(); updateEmp(); }catch(e){ if(e.message!=="SESSION_ENDED") toast(e.message); } };
+  if($("#approveHere")) $("#approveHere").onclick=approveOnDevice;
+
+  // main (only re-render when break state changes, so games/inputs aren't wiped)
+  const key=act?`a${act.id}`:"desk";
+  if(key!==S.lastActiveKey){ S.lastActiveKey=key; act?renderOnBreak(act):renderDesk(); }
+
+  // side widgets
+  const ts=todayStats();
+  $("#wStats").innerHTML=`<h3 style="margin-bottom:12px">today's recap</h3><div class="stat-grid">
+    <div class="st"><div class="k">breaks</div><div class="v">${ts.n}</div></div>
+    <div class="st"><div class="k">time away</div><div class="v">${fmtMin(ts.mins)}</div></div>
+    <div class="st"><div class="k">on-time streak</div><div class="v">${ts.streak?`🔥 ${ts.streak}`:"—"}</div></div>
+    <div class="st"><div class="k">avg vibe</div><div class="v">${ts.mood?VIBES[Math.round(ts.mood)-1][1]:"—"}</div></div></div>`;
+  $("#wAway").innerHTML=`<div class="between" style="margin-bottom:6px"><h3>who's out rn</h3><span class="pill violet">${st.away.length}</span></div>
+    <div class="mini-list">${st.away.length?st.away.map(a=>{const b=BTM[a.t]||BTM[0];return `<div class="it"><div class="av">${esc(a.av)}</div>
+      <div style="flex:1;min-width:0"><b style="font-size:14px">${esc(a.name)}</b><div class="muted small">${b.icon} ${esc(b.name)}</div></div>
+      <span class="mono small muted" data-since="${esc(a.s)}">${fmtClock(now()-new Date(a.s))}</span></div>`}).join(""):`<div class="empty">everyone's at their desk 💪</div>`}</div>`;
+  $("#wBoard").innerHTML=`<h3 style="margin-bottom:6px">🏆 reaction rush leaderboard</h3><p class="muted small" style="margin:0 0 8px">fastest reflexes in the building. play it on your next break.</p>
+    <div class="mini-list">${st.board.length?st.board.map((b,i)=>`<div class="it"><b class="mono" style="width:18px">${i+1}</b><div class="av">${esc(b.av)}</div><span style="flex:1">${esc(b.name)}</span><span class="mono" style="color:var(--lime)">${b.ms} ms</span></div>`).join(""):`<div class="empty">no scores yet — be the first</div>`}</div>
+    ${me.best?`<p class="small muted" style="margin:10px 0 0">your PB: <b class="mono" style="color:var(--lime)">${me.best} ms</b></p>`:""}`;
+}
+
+function tickEmp(){
+  if(!S.emp) return;
+  $$("[data-since]").forEach(el=>el.textContent=fmtClock(now()-new Date(el.dataset.since)));
+  const act=S.emp.active; if(!act || !$("#ringT")) return;
+  const el=now()-new Date(act.s).getTime(), lim=limitOf(act.t,S.emp.limits)*60000, p=Math.min(el/lim,1);
+  $("#ringT").textContent=fmtClock(el);
+  const C=2*Math.PI*96, arc=$("#ringArc");
+  arc.style.strokeDashoffset=C*(1-p);
+  arc.style.stroke = el>lim?"var(--danger)":p>.8?"var(--amber)":BTM[act.t].col;
+  $("#ringSub").innerHTML = el>lim?`<span style="color:var(--danger);font-weight:700">${fmtMin((el-lim)/60000)} over the ${limitOf(act.t,S.emp.limits)} min limit</span>`:`${fmtMin((lim-el)/60000)} left of ${limitOf(act.t,S.emp.limits)} min`;
+}
+
+function renderDesk(){
+  stopGames();
+  const lim=S.emp.limits;
+  $("#empMain").innerHTML=`<div class="between" style="margin-bottom:14px"><h2 style="margin:0">need a breather?</h2><span class="muted small">pick one — your timer starts right away</span></div>
+    <div class="bgrid">${BT.map(b=>`<button class="bcard" data-t="${b.c}" style="--c:${b.col}">
+      <span class="ic">${b.icon}</span><span class="nm">${esc(b.name)}</span><span class="vb">${esc(b.vibe)}</span><span class="lm">up to ${limitOf(b.c,lim)} min</span></button>`).join("")}</div>
+    <div class="card fact-card"><div class="big">🧠</div><div style="flex:1"><h3>fun fact of the moment</h3><p id="factTxt">${esc(FACTS[S.factIdx])}</p>
+      <button class="btn sm" id="nextFact">🎲 another one</button></div></div>
+    <p class="muted small" style="margin-top:14px">🔒 the arcade unlocks while you're on a break — work first, games after 😉</p>`;
+  $$(".bcard").forEach(b=>b.onclick=()=>startBreak(Number(b.dataset.t)));
+  $("#nextFact").onclick=()=>{ S.factIdx=(S.factIdx+1)%FACTS.length; $("#factTxt").textContent=FACTS[S.factIdx]; };
+}
+
+function startBreak(t){
+  const b=BTM[t], need=t===8;
+  modal({title:`${b.icon} ${esc(b.name)}`,text:`${b.priv?"This one's private — teammates just see “taking a moment”. ":""}Recommended limit: ${limitOf(t,S.emp.limits)} min.`,
+    body:`<div class="field"><label>${need?"What's up? (required)":"Add a note (optional)"}</label><input class="input" id="noteIn" maxlength="120" placeholder="${need?"short reason":"e.g. grabbing chai with the team"}"></div>`,
+    okText:"Start break ⏱️",
+    onOk:async root=>{ const note=$("#noteIn",root).value.trim(); if(need&&!note) return "Please add a short reason.";
+      await rpc("emp_start",{p_token:S.empToken,p_type:t,p_note:note||null}); await loadEmp(); updateEmp(); }});
+}
+
+function renderOnBreak(act){
+  const b=BTM[act.t], C=2*Math.PI*96;
+  $("#empMain").innerHTML=`<div class="onbreak">
+    <div class="card ring-card">
+      <div class="ring"><svg width="220" height="220"><circle cx="110" cy="110" r="96" stroke="rgba(255,255,255,.07)" stroke-width="12" fill="none"/>
+        <circle id="ringArc" cx="110" cy="110" r="96" stroke="${b.col}" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}" style="transition:stroke-dashoffset 1s linear"/></svg>
+        <div class="in"><div><div class="ic">${b.icon}</div><div class="t" id="ringT">00:00</div></div></div></div>
+      <div><b>${esc(b.name)}</b>${act.note?`<div class="muted small">“${esc(act.note)}”</div>`:""}<div class="muted small" style="margin-top:4px">started ${fmtTime(act.s)}</div></div>
+      <div class="small muted" id="ringSub"></div>
+      <button class="btn lime" id="backBtn">✓ I'm back at my desk</button>
+    </div>
+    <div class="card">
+      <div class="between" style="margin-bottom:6px"><h2 style="margin:0">🕹️ break arcade</h2><span class="muted small">quick games, zero guilt</span></div>
+      <div class="tabs" id="arcTabs">${[["react","⚡ Reaction Rush"],["mem","🧩 Memory Match"],["ttt","❌⭕ Tic-Tac-Toe"],["breathe","🫧 Breathe"],["fact","🧠 Fun facts"]].map(([k,l])=>`<button class="tab ${S.arcadeTab===k?"on":""}" data-g="${k}">${l}</button>`).join("")}</div>
+      <div class="game" id="game"></div>
+    </div></div>`;
+  $("#backBtn").onclick=endBreak;
+  $$("#arcTabs .tab").forEach(t=>t.onclick=()=>{ S.arcadeTab=t.dataset.g; $$("#arcTabs .tab").forEach(x=>x.classList.toggle("on",x===t)); mountGame(); });
+  mountGame(); tickEmp();
+}
+
+function endBreak(){
+  modal({title:"welcome back! quick vibe check ✨",text:"How was your break? (totally optional)",
+    body:`<div class="vibes">${VIBES.map(([v,e,l])=>`<button data-v="${v}">${e}<span>${l}</span></button>`).join("")}</div>`,
+    okText:"", cancelText:"Skip"});
+  const finish=async mood=>{
+    $("#modalRoot").innerHTML="";
+    try{ const r=await rpc("emp_end",{p_token:S.empToken,p_mood:mood}); await loadEmp(); updateEmp();
+      if(!r.over){ confetti(); toast(`back on time in ${fmtMin(r.secs/60)} — legend 🔥`); } else toast(`welcome back! that one ran ${fmtMin(r.secs/60)} ⏱️`);
+    }catch(e){ if(e.message!=="SESSION_ENDED") toast(e.message); }
+  };
+  $$(".vibes button").forEach(b=>b.onclick=()=>finish(Number(b.dataset.v)));
+  $("#mCancel").onclick=()=>finish(null);
+}
+
+function pickAvatar(){
+  let pick=S.emp.me.avatar;
+  modal({title:"pick your avatar",body:`<div class="avgrid">${AVATARS.map(a=>`<button data-a="${a}" class="${a===pick?"on":""}">${a}</button>`).join("")}</div>`,okText:"Save",
+    onOk:async()=>{ await rpc("emp_avatar",{p_token:S.empToken,p_av:pick}); await loadEmp(); updateEmp(); }});
+  $$(".avgrid button").forEach(b=>b.onclick=()=>{ pick=b.dataset.a; $$(".avgrid button").forEach(x=>x.classList.toggle("on",x===b)); });
+}
+
+function approveOnDevice(){
+  const me=S.emp.me;
+  modal({title:"Admin approval",text:`An admin must sign in to approve sign-out for <b>${esc(me.name)}</b> (${esc(me.id)}).`,
+    body:`<div class="field"><label>Admin username</label><input class="input" id="au" autocomplete="off"></div>
+          <div class="field"><label>Password</label><input class="input" id="ap" type="password" autocomplete="off"></div>`,
+    okText:"Approve sign-out",
+    onOk:async root=>{
+      const r=await rpc("adm_login",{p_user:$("#au",root).value,p_pass:$("#ap",root).value});
+      if(!r.ok) return r.msg;
+      if(r.me.must_change){ rpc("adm_logout",{p_token:r.token}).catch(()=>{}); return "This admin must sign in to the admin console and set a new password first."; }
+      await rpc("adm_signout",{p_token:r.token,p_emp:me.id});
+      await rpc("adm_logout",{p_token:r.token});
+      S.empToken=null; ls.set("sa2_emp_token",null); S.emp=null;
+      setTimeout(()=>{ clearTimers(); S.lastActiveKey=null; renderLogin(); toast("Signed out. See ya 👋"); },0);
+    }});
+}
+
+/* =====================================================================
+   ARCADE
+   ===================================================================== */
+let gameCleanup=null;
+function stopGames(){ if(gameCleanup){ gameCleanup(); gameCleanup=null; } }
+function mountGame(){
+  stopGames();
+  const g=$("#game"); if(!g) return;
+  ({react:gReact,mem:gMem,ttt:gTtt,breathe:gBreathe,fact:gFact})[S.arcadeTab](g);
+}
+
+function gReact(g){
+  let state="idle", t0=0, to=null, tries=[];
+  g.innerHTML=`<div class="react idle" id="rz">tap to start<small>wait for green, then tap as fast as you can</small></div>
+    <div class="between" style="margin-top:12px"><span class="muted small" id="rTries"></span><span class="small">your PB: <b class="mono" style="color:var(--lime)" id="rPb">${S.emp?.me?.best?S.emp.me.best+" ms":"—"}</b></span></div>`;
+  const z=$("#rz");
+  const set=(cls,html)=>{ z.className="react "+cls; z.innerHTML=html; };
+  const hit=async()=>{
+    if(state==="idle"||state==="res"){ state="wait"; set("wait","wait for it…<small>don't tap yet 👀</small>"); to=setTimeout(()=>{ state="go"; t0=performance.now(); set("go","TAP!"); },1200+Math.random()*2800); }
+    else if(state==="wait"){ clearTimeout(to); state="res"; set("res","too soon 😅<small>tap to try again</small>"); }
+    else if(state==="go"){
+      const ms=Math.round(performance.now()-t0); state="res"; tries.push(ms);
+      const vibe=ms<200?"insane reflexes 🤯":ms<260?"speedy ⚡":ms<330?"solid 👍":"warming up 🐢";
+      set("res",`${ms} ms<small>${vibe} · tap to go again</small>`);
+      $("#rTries").textContent=`last ${tries.slice(-5).join(" · ")} ms`;
+      if(ms>=90 && ms<=2000 && (!S.emp.me.best || ms<S.emp.me.best)){
+        try{ const best=await rpc("emp_score",{p_token:S.empToken,p_ms:ms}); S.emp.me.best=best; $("#rPb").textContent=best+" ms"; toast("new personal best! 🏆"); confetti(); loadEmp().then(updateEmp).catch(()=>{}); }catch(e){}
+      }
+    }
+  };
+  z.addEventListener("pointerdown",hit);
+  gameCleanup=()=>clearTimeout(to);
+}
+
+function gMem(g){
+  const pool=["🍕","🎧","🚀","🌈","🧋","👾","🦄","🔥","🍩","🎮","🌻","💎"];
+  const pick=pool.sort(()=>Math.random()-.5).slice(0,8); const deck=[...pick,...pick].sort(()=>Math.random()-.5);
+  let open=[], done=0, moves=0, lock=false, start=Date.now();
+  const best=ls.get("sa2_mem_best");
+  g.innerHTML=`<div class="between" style="margin-bottom:12px"><span class="small">moves: <b class="mono" id="mMoves">0</b></span><span class="small muted">best: <b class="mono">${best||"—"}</b> moves</span><button class="btn sm" id="mNew">shuffle</button></div>
+    <div class="mem">${deck.map((e,i)=>`<button data-i="${i}"><span>${e}</span></button>`).join("")}</div>`;
+  $("#mNew").onclick=()=>gMem(g);
+  $$(".mem button",g).forEach(b=>b.onclick=()=>{
+    if(lock||b.classList.contains("open")||b.classList.contains("done")) return;
+    b.classList.add("open"); open.push(b);
+    if(open.length===2){ moves++; $("#mMoves").textContent=moves; const [a,c]=open;
+      if(deck[a.dataset.i]===deck[c.dataset.i]){ a.classList.replace("open","done"); c.classList.replace("open","done"); open=[]; done+=2;
+        if(done===16){ const s=Math.round((Date.now()-start)/1000); if(!best||moves<Number(best)) ls.set("sa2_mem_best",moves); confetti(); toast(`cleared in ${moves} moves, ${s}s 🧩`); } }
+      else { lock=true; setTimeout(()=>{ a.classList.remove("open"); c.classList.remove("open"); open=[]; lock=false; },700); } }
+  });
+}
+
+function gTtt(g){
+  let b=Array(9).fill(""), over=false; const score=JSON.parse(ls.get("sa2_ttt")||'{"w":0,"l":0,"d":0}');
+  const L=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  const win=p=>L.find(l=>l.every(i=>b[i]===p));
+  const draw=()=>{ g.innerHTML=`<div class="between" style="margin-bottom:14px"><span class="small">you <b style="color:var(--lime)">X</b> vs bot <b style="color:var(--pink)">O</b></span>
+      <span class="small mono">W ${score.w} · L ${score.l} · D ${score.d}</span><button class="btn sm" id="tNew">new game</button></div>
+      <div class="ttt">${b.map((v,i)=>`<button data-i="${i}" class="${v.toLowerCase()}">${v}</button>`).join("")}</div>
+      <p class="muted small" style="text-align:center;margin-top:12px" id="tMsg">${over||"your move"}</p>`;
+    $("#tNew").onclick=()=>gTtt(g);
+    $$(".ttt button",g).forEach(x=>x.onclick=()=>move(Number(x.dataset.i))); };
+  const end=msg=>{ over=msg; ls.set("sa2_ttt",JSON.stringify(score)); draw(); };
+  const bot=()=>{
+    const free=b.map((v,i)=>v?null:i).filter(v=>v!==null);
+    const tryL=p=>{ for(const i of free){ b[i]=p; const w=win(p); b[i]=""; if(w) return i; } return null; };
+    let m=tryL("O"); if(m===null) m=tryL("X");
+    if(m===null && !b[4]) m=4;
+    if(m===null && Math.random()<.75){ const c=[0,2,6,8].filter(i=>!b[i]); if(c.length) m=c[Math.floor(Math.random()*c.length)]; }
+    if(m===null) m=free[Math.floor(Math.random()*free.length)];
+    b[m]="O";
+  };
+  const move=i=>{ if(over||b[i]) return; b[i]="X";
+    if(win("X")){ score.w++; confetti(); return end("you won 🎉"); }
+    if(b.every(Boolean)){ score.d++; return end("draw 🤝"); }
+    bot(); if(win("O")){ score.l++; return end("bot wins this round 🤖"); }
+    if(b.every(Boolean)){ score.d++; return end("draw 🤝"); }
+    draw(); };
+  draw();
+}
+
+function gBreathe(g){
+  g.innerHTML=`<div class="breathe"><div class="bubble"></div><div class="lbl" id="bl">breathe in…</div></div>
+    <p class="muted small" style="text-align:center">box breathing: in 4 · hold 4 · out 4 · hold 4. a few rounds = instant reset.</p>`;
+  const steps=["breathe in…","hold","breathe out…","hold"]; let i=0;
+  const t=setInterval(()=>{ i=(i+1)%4; const el=$("#bl"); if(el) el.textContent=steps[i]; },4000);
+  gameCleanup=()=>clearInterval(t);
+}
+
+function gFact(g){
+  const show=()=>{ g.innerHTML=`<div style="min-height:260px;display:grid;place-items:center;text-align:center;padding:10px">
+    <div><div style="font-size:54px">🧠</div><p style="font-family:var(--display);font-size:24px;font-weight:700;line-height:1.3;max-width:520px;margin:14px auto">${esc(FACTS[S.factIdx])}</p>
+    <button class="btn violet" id="fNext">🎲 hit me with another</button></div></div>`;
+    $("#fNext").onclick=()=>{ S.factIdx=(S.factIdx+1)%FACTS.length; show(); }; };
+  show();
+}
+
+/* =====================================================================
+   LOUNGE (team chat) — polling, messages auto-expire server-side
+   ===================================================================== */
+function stopLounge(){ if(S.lounge){ S.lounge.alive=false; clearInterval(S.lounge.timer); S.lounge=null; } }
+function mountLounge(el,{token,channels,admin}){
+  stopLounge();
+  const L={token,channels,admin,ch:channels[0].id,last:0,alive:true,timer:null};
+  el.innerHTML=`<div class="lh between"><h3>💬 the lounge</h3><span class="muted small">msgs vanish after ${S.emp?.chat_days||S.ov?.settings?.chat_days||3} day(s)</span></div>
+    <div class="chtabs">${channels.map(c=>`<button data-ch="${esc(c.id)}" class="${c.id===L.ch?"on":""}">${esc(c.label)}</button>`).join("")}</div>
+    <div class="msgs" id="msgs"><div class="empty">loading…</div></div>
+    <form class="composer" id="cForm"><input class="input" id="cIn" maxlength="280" placeholder="${admin?"post as Admin…":"say something nice…"}" autocomplete="off"><button class="btn violet" type="submit">➤</button></form>
+    <div class="quick">${["🔥","😂","💯","🙌","☕","👀","🫶","🎉"].map(e=>`<button type="button" data-e="${e}">${e}</button>`).join("")}</div>`;
+  const box=$("#msgs",el);
+  const render=rows=>{
+    const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
+    rows.forEach(m=>{ const d=document.createElement("div"); d.className=`msg ${m.mine?"mine":""} ${m.adm?"isadm":""}`; d.dataset.id=m.id;
+      d.innerHTML=`<div class="av">${esc(m.av)}</div><div><div class="meta">${m.mine&&!admin?"you":esc(m.who)} · ${fmtTime(m.at)}${admin?`<button class="del" data-del="${m.id}" title="delete">✕</button>`:""}</div><div class="bub">${esc(m.msg)}</div></div>`;
+      box.appendChild(d); });
+    if(nearBottom||L.first) box.scrollTop=box.scrollHeight;
+  };
+  const pull=async()=>{ if(!L.alive) return; const ch=L.ch;
+    try{ const rows=await rpc("chat_list",{p_token:L.token,p_ch:ch,p_after:L.last}); if(!L.alive||ch!==L.ch) return;
+      L.first=!L.loaded; if(!L.loaded){ box.innerHTML=""; L.loaded=true; }
+      if(rows.length){ $$(".empty",box).forEach(x=>x.remove()); render(rows); L.last=rows[rows.length-1].id; }
+      if(!box.children.length) box.innerHTML=`<div class="empty">no messages yet — start the convo ✨</div>`;
+    }catch(e){} };
+  $$(".chtabs button",el).forEach(b=>b.onclick=()=>{ L.ch=b.dataset.ch; L.last=0; L.loaded=false; $$(".chtabs button",el).forEach(x=>x.classList.toggle("on",x===b)); box.innerHTML=`<div class="empty">loading…</div>`; pull(); });
+  $("#cForm",el).onsubmit=async e=>{ e.preventDefault(); const inp=$("#cIn",el), v=inp.value.trim(); if(!v) return;
+    inp.disabled=true; try{ await rpc("chat_post",{p_token:L.token,p_ch:L.ch,p_msg:v}); inp.value=""; await pull(); }catch(err){ if(err.message!=="SESSION_ENDED") toast(err.message); }
+    inp.disabled=false; inp.focus(); };
+  $$(".quick button",el).forEach(b=>b.onclick=()=>{ const i=$("#cIn",el); i.value+=b.dataset.e; i.focus(); });
+  box.addEventListener("click",async e=>{ const d=e.target.closest("[data-del]"); if(!d) return;
+    try{ await rpc("adm_chat_delete",{p_token:S.admToken,p_id:Number(d.dataset.del)}); d.closest(".msg").remove(); toast("message deleted"); }catch(err){ toast(err.message); } });
+  L.timer=setInterval(()=>{ if(!document.hidden) pull(); },4000);
+  S.lounge=L; pull();
+}
+
+/* =====================================================================
+   ADMIN — LOGIN / SESSION
+   ===================================================================== */
+function renderAdminLogin(){
+  $("#app").innerHTML=`<div style="min-height:calc(100vh - 160px);display:grid;place-items:center"><div class="card login-card" style="width:100%;max-width:430px">
+    <div style="font-size:40px">🔐</div><h2 style="margin:6px 0 4px">Admin sign-in</h2><p class="muted" style="margin:0 0 18px">authorised admins only</p>
+    <div class="field"><label>Username</label><input class="input" id="aU" autocomplete="username"></div>
+    <div class="field"><label>Password</label><input class="input" id="aP" type="password" autocomplete="current-password"></div>
+    <div class="err" id="aErr"></div>
+    <button class="btn violet" id="aBtn">Sign in to admin console</button>
+    <p class="muted small" style="margin:14px 0 0">The console locks itself after ${ADMIN_IDLE_MIN} minutes of inactivity.</p>
+  </div></div>`;
+  $("#aU").focus();
+  const doLogin=async()=>{
+    const u=$("#aU").value, p=$("#aP").value; if(!u||!p) return $("#aErr").textContent="Enter both username and password.";
+    $("#aBtn").disabled=true;
+    try{ const r=await rpc("adm_login",{p_user:u,p_pass:p}); if(!r.ok){ $("#aErr").textContent=r.msg; $("#aP").value=""; $("#aBtn").disabled=false; return; }
+      S.admToken=r.token; ss.set("sa2_adm_token",r.token); S.me=r.me; S.admLast=Date.now(); go("admin"); }
+    catch(e){ $("#aErr").textContent=e.message; $("#aBtn").disabled=false; }
+  };
+  $("#aBtn").onclick=doLogin; ["#aU","#aP"].forEach(s=>$(s).addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); }));
+}
+async function adminSignOut(msg){
+  const t=S.admToken; S.admToken=null; S.me=null; ss.set("sa2_adm_token",null);
+  if(t) rpc("adm_logout",{p_token:t}).catch(()=>{});
+  $("#modalRoot").innerHTML=""; go("emp"); if(msg) toast(msg);
+}
+function onAdminExpired(){ if(S.view==="admin"){ S.admToken=null; S.me=null; ss.set("sa2_adm_token",null); go("adminLogin"); toast("Admin session expired — please sign in again"); } }
+["click","keydown","mousemove","touchstart"].forEach(ev=>document.addEventListener(ev,()=>{ S.admLast=Date.now(); },{passive:true}));
+setInterval(()=>{ if(S.view==="admin" && S.admToken && Date.now()-S.admLast>ADMIN_IDLE_MIN*60000) adminSignOut("Admin console locked due to inactivity"); },15000);
+
+/* =====================================================================
+   ADMIN — SHELL
+   ===================================================================== */
+// 4th element = super admin only
+const ADM_TABS=[["live","📡","Live now"],["sessions","🔐","Sign-outs"],["log","📋","Activity log"],["reports","📊","Reports"],["upload","🗂️","Old files report"],
+  ["people","👥","Employees"],["lounge","💬","Lounge"],["admins","🛡️","Admins",1],["storage","💾","Storage & backups",1],["settings","⚙️","Settings",1],["account","🔑","My account"]];
+const isSuper=()=>S.me?.role==="super";
+const myTabs=()=>ADM_TABS.filter(t=>!t[3]||isSuper());
+async function loadOv(){ S.ov=await rpc("adm_overview",{p_token:S.admToken,p_since:midnight().toISOString()}); S.offset=new Date(S.ov.now).getTime()-Date.now(); return S.ov; }
+async function renderAdmin(){
+  $("#app").innerHTML=`<div class="empty" style="padding:80px 0">loading…</div>`;
+  try{ S.me=await rpc("adm_me",{p_token:S.admToken}); }catch(e){ if(S.view==="admin") $("#app").innerHTML=`<div class="card empty">${esc(e.message)}</div>`; return; }
+  showWho();
+  if(S.me.must_change) return renderForcePw();
+  $("#app").innerHTML=`<div class="adm"><nav class="nav" id="admNav"></nav><section id="admBody"><div class="empty">loading…</div></section></div>`;
+  try{ await loadOv(); }catch(e){ if($("#admBody")) $("#admBody").innerHTML=`<div class="card empty">${esc(e.message)}</div>`; return; }
+  if(!myTabs().some(t=>t[0]===S.admTab)) S.admTab="live";
+  drawNav(); openTab(S.admTab);
+  S.timers.adm=setInterval(async()=>{ if(document.hidden||modalOpen()) return; try{ await loadOv(); drawNav(); if(S.admTab==="live") tabLive(); if(S.admTab==="sessions") tabSessions(); }catch(e){} },10000);
+  S.timers.admTick=setInterval(()=>$$("[data-since]").forEach(el=>el.textContent=fmtClock(now()-new Date(el.dataset.since))),1000);
+}
+function drawNav(){
+  const reqs=S.ov.sessions.filter(s=>s.req).length;
+  $("#admNav").innerHTML=myTabs().map(([k,i,l])=>`<button data-k="${k}" class="${S.admTab===k?"on":""}">${i} ${l}${k==="sessions"&&reqs?`<span class="badge">${reqs}</span>`:""}</button>`).join("");
+  $$("#admNav button").forEach(b=>b.onclick=()=>openTab(b.dataset.k));
+}
+function openTab(k){
+  S.admTab=k; stopLounge(); $$("#admNav button").forEach(b=>b.classList.toggle("on",b.dataset.k===k));
+  ({live:tabLive,sessions:tabSessions,log:tabLog,reports:tabReports,upload:tabUpload,people:tabPeople,lounge:tabLounge,admins:tabAdmins,storage:tabStorage,settings:tabSettings,account:tabAccount})[k]();
+}
+const B=()=>$("#admBody");
+const lim=t=>limitOf(t,S.ov?.settings?.limits);
+const admErr=e=>toast(e.message);
+
+/* ---- Live */
+function tabLive(){
+  const ov=S.ov, act=ov.active, over=act.filter(a=>now()-new Date(a.s)>lim(a.t)*60000);
+  B().innerHTML=`<h1 style="margin-bottom:4px">Live now</h1><p class="muted" style="margin:0 0 18px">auto-refreshes every 10 seconds</p>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Signed in</div><div class="v">${ov.sessions.length}</div></div>
+      <div class="kpi"><div class="k">Away right now</div><div class="v">${act.length}</div></div>
+      <div class="kpi"><div class="k">Over limit</div><div class="v" style="color:${over.length?"var(--danger)":"inherit"}">${over.length}</div></div>
+      <div class="kpi"><div class="k">Breaks today</div><div class="v">${ov.today.n}</div></div>
+      <div class="kpi"><div class="k">Time away today</div><div class="v">${fmtMin(ov.today.secs/60)}</div></div>
+      <div class="kpi"><div class="k">Avg vibe today</div><div class="v">${ov.today.mood?`${VIBES[Math.round(ov.today.mood)-1][1]} ${Number(ov.today.mood).toFixed(1)}`:"—"}</div></div>
+    </div>
+    <div class="card"><h2>Currently away from desk</h2>
+    ${act.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Break</th><th>Started</th><th>Elapsed</th><th>Limit</th><th></th></tr></thead><tbody>
+      ${act.map(a=>{const o=now()-new Date(a.s)>lim(a.t)*60000;return `<tr><td>${esc(a.av||"")} <b>${esc(a.name||a.emp)}</b> <span class="muted mono small">${esc(a.emp)}</span></td>
+      <td>${BTM[a.t].icon} ${esc(BTM[a.t].name)}${a.note?`<div class="muted small">${esc(a.note)}</div>`:""}</td><td>${fmtTime(a.s)}</td>
+      <td class="mono" data-since="${esc(a.s)}">${fmtClock(now()-new Date(a.s))}</td><td>${o?`<span class="pill danger">over</span>`:`<span class="pill grey">${lim(a.t)} min</span>`}</td>
+      <td style="text-align:right"><button class="btn sm" data-end="${a.id}">End break</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty">everyone's at their desk 💪</div>`}</div>`;
+  $$("[data-end]").forEach(b=>b.onclick=()=>modal({title:"End this break?",text:"This is recorded in the audit trail.",okText:"End break",
+    onOk:async()=>{ await rpc("adm_end_break",{p_token:S.admToken,p_id:Number(b.dataset.end)}); await loadOv(); tabLive(); }}));
+}
+
+/* ---- Sessions */
+function tabSessions(){
+  const ov=S.ov, reqs=ov.sessions.filter(s=>s.req), actBy=Object.fromEntries(ov.active.map(a=>[a.emp,a]));
+  B().innerHTML=`<h1 style="margin-bottom:18px">Sign-outs & sessions</h1>
+    ${reqs.length?`<div class="card" style="margin-bottom:18px"><h2>Pending sign-out requests</h2>${reqs.map(s=>`<div class="req"><div>${esc(s.av)} <b>${esc(s.name)}</b> <span class="muted mono small">${esc(s.id)}</span><div class="muted small">requested at ${fmtTime(s.req)}</div></div>
+      <div class="row"><button class="btn sm" data-decline="${esc(s.id)}">Decline</button><button class="btn sm lime" data-approve="${esc(s.id)}">Approve sign-out</button></div></div>`).join("")}</div>`:""}
+    <div class="card"><h2>Active sessions (${ov.sessions.length})</h2>
+    ${ov.sessions.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Signed in</th><th>Status</th><th></th></tr></thead><tbody>
+      ${ov.sessions.map(s=>{const a=actBy[s.id];return `<tr><td>${esc(s.av)} <b>${esc(s.name)}</b> <span class="muted mono small">${esc(s.id)}</span>${s.dept?`<div class="muted small">${esc(s.dept)}</div>`:""}</td>
+        <td>${fmtTime(s.login)} <span class="muted small">${fmtDate(s.login)}</span></td>
+        <td>${a?`<span class="pill warn">${BTM[a.t].icon} ${esc(BTM[a.t].name)}</span>`:`<span class="pill">at desk</span>`} ${s.req?`<span class="pill warn">sign-out requested</span>`:""}</td>
+        <td style="text-align:right"><button class="btn sm danger" data-force="${esc(s.id)}">Sign out</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty">no one's signed in</div>`}</div>`;
+  const signout=async id=>{ await rpc("adm_signout",{p_token:S.admToken,p_emp:id}); await loadOv(); drawNav(); tabSessions(); toast("signed out"); };
+  $$("[data-approve]").forEach(b=>b.onclick=()=>signout(b.dataset.approve).catch(admErr));
+  $$("[data-decline]").forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_decline",{p_token:S.admToken,p_emp:b.dataset.decline}); await loadOv(); drawNav(); tabSessions(); }catch(e){ admErr(e); } });
+  $$("[data-force]").forEach(b=>b.onclick=()=>modal({title:"Sign out this employee?",text:"Any running break will be closed now.",okText:"Sign out",okClass:"danger",onOk:()=>signout(b.dataset.force)}));
+}
+
+/* ---- data normalisation shared by log / reports / uploads */
+function normApi(x){
+  const s=new Date(x.s), e=x.e?new Date(x.e):null, min=((e?e.getTime():now())-s.getTime())/60000, l=lim(x.t);
+  return {id:x.id, emp:x.emp, name:x.name||"Unknown", dept:x.dept||"", t:x.t, type:BTM[x.t]?.name||"?", s, e, min, lim:l, over:min>l,
+    mood:x.mood||null, voided:x.f===1, flag:x.f, note:x.note||"", vr:x.vr||"", status:x.f===1?"Voided":!e?"In progress":x.f===2?"Ended by admin":min>l?"Over limit":"On time"};
+}
+async function fetchRows(from,to){ return (await rpc("adm_entries",{p_token:S.admToken,p_from:from.toISOString(),p_to:to.toISOString()})).map(normApi); }
+
+/* ---- Excel helpers (SheetJS) */
+function needXlsx(){ if(!window.XLSX){ toast("Excel library is still loading — try again in a second"); return false; } return true; }
+function sheetRows(rows){
+  return rows.map(r=>({"Date":ymd(r.s),"Employee ID":r.emp,"Employee Name":r.name,"Department":r.dept,"Break Type":r.type,"Note":r.note,
+    "Start":r.s,"End":r.e||"","Duration (min)":Math.round(r.min*10)/10,"Limit (min)":r.lim??"","Over Limit":r.over?"Yes":"No",
+    "Vibe (1-5)":r.mood??"","Status":r.status,"Void Reason":r.vr}));
+}
+function summaryRows(rows){
+  const v=rows.filter(r=>!r.voided), by=(key)=>{ const m={}; v.forEach(r=>{ const k=key(r); (m[k]??={n:0,min:0,over:0,mood:[]}); m[k].n++; m[k].min+=r.min; if(r.over)m[k].over++; if(r.mood)m[k].mood.push(r.mood); }); return m; };
+  const fmt=(m,label)=>Object.entries(m).sort((a,b)=>b[1].min-a[1].min).map(([k,x])=>({[label]:k,"Breaks":x.n,"Total (min)":Math.round(x.min),"Avg (min)":Math.round(x.min/x.n*10)/10,"Over limit":x.over,"Avg vibe":x.mood.length?Math.round(x.mood.reduce((a,b)=>a+b,0)/x.mood.length*10)/10:""}));
+  return {types:fmt(by(r=>r.type),"Break Type"), people:fmt(by(r=>`${r.name} (${r.emp})`),"Employee"), depts:fmt(by(r=>r.dept||"—"),"Department")};
+}
+function writeBook(sheets, filename){
+  const wb=XLSX.utils.book_new();
+  sheets.forEach(([name,rows,widths])=>{
+    const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{"(no data)":""}],{dateNF:"yyyy-mm-dd hh:mm"});
+    if(widths) ws["!cols"]=widths.map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws,name);
+  });
+  XLSX.writeFile(wb, filename, {compression:true});
+}
+const ACT_W=[11,12,22,16,24,26,17,17,13,10,10,10,15,26];
+function exportActivity(rows, filename, extraMeta={}){
+  if(!needXlsx()) return;
+  const sum=summaryRows(rows);
+  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.1"}];
+  writeBook([["Activities",sheetRows(rows),ACT_W],["By Break Type",sum.types,[26,8,12,10,10,9]],["By Employee",sum.people,[32,8,12,10,10,9]],["By Department",sum.depts,[22,8,12,10,10,9]],["Info",meta,[18,40]]], filename);
+}
+
+/* ---- Activity log */
+let logF={from:ymd(new Date()),to:ymd(new Date()),q:"",t:""}, logRows=[];
+async function tabLog(){
+  B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Activity log</h1><button class="btn lime" id="xl">⬇️ Export to Excel</button></div>
+    <div class="card"><div class="filters">
+      <div class="field"><label>From</label><input type="date" class="input" id="fF" value="${logF.from}"></div>
+      <div class="field"><label>To</label><input type="date" class="input" id="fT" value="${logF.to}"></div>
+      <div class="field" style="flex:1"><label>Search employee</label><input class="input" id="fQ" value="${esc(logF.q)}" placeholder="name or ID"></div>
+      <div class="field"><label>Break type</label><select class="input" id="fY"><option value="">All types</option>${BT.map(b=>`<option value="${b.c}" ${String(logF.t)===String(b.c)?"selected":""}>${esc(b.name)}</option>`).join("")}</select></div>
+    </div><div id="logT"><div class="empty">loading…</div></div></div>`;
+  const reload=async()=>{ try{ logRows=await fetchRows(fromYmd(logF.from), addDays(fromYmd(logF.to),1)); drawLog(); }catch(e){ $("#logT").innerHTML=`<div class="empty">${esc(e.message)}</div>`; } };
+  $("#fF").onchange=e=>{logF.from=e.target.value;reload();}; $("#fT").onchange=e=>{logF.to=e.target.value;reload();};
+  $("#fQ").oninput=e=>{logF.q=e.target.value;drawLog();}; $("#fY").onchange=e=>{logF.t=e.target.value;drawLog();};
+  $("#xl").onclick=()=>exportActivity(filteredLog(),`stepaway-activity_${logF.from}_to_${logF.to}.xlsx`,{"From":logF.from,"To":logF.to});
+  await reload();
+}
+function filteredLog(){ const q=logF.q.toLowerCase(); return logRows.filter(r=>(!logF.t||String(r.t)===String(logF.t))&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q))); }
+function drawLog(){
+  const rows=filteredLog(), shown=rows.slice(0,500);
+  $("#logT").innerHTML=rows.length?`<p class="muted small" style="margin:0 0 8px">${rows.length} entr${rows.length===1?"y":"ies"}${rows.length>500?" · showing the latest 500 (export to see all)":""}</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Break</th><th>Start</th><th>End</th><th>Duration</th><th>Vibe</th><th>Status</th><th></th></tr></thead><tbody>
+    ${shown.map(r=>`<tr class="${r.voided?"voided":""}"><td>${fmtDate(r.s)}</td><td><b>${esc(r.name)}</b><div class="muted mono small">${esc(r.emp)}</div></td>
+      <td>${BTM[r.t].icon} ${esc(r.type)}${r.note?`<div class="muted small">${esc(r.note)}</div>`:""}</td><td>${fmtTime(r.s)}</td><td>${r.e?fmtTime(r.e):"—"}</td>
+      <td class="mono">${fmtMin(r.min)}</td><td>${r.mood?VIBES[r.mood-1][1]:""}</td>
+      <td>${r.voided?`<span class="pill danger" title="${esc(r.vr)}">voided</span>`:!r.e?`<span class="pill warn">in progress</span>`:r.over?`<span class="pill danger">over limit</span>`:`<span class="pill">on time</span>`}${r.flag===2?` <span class="pill grey">admin-ended</span>`:""}</td>
+      <td style="text-align:right">${r.voided?`<button class="btn sm" data-restore="${r.id}">Restore</button>`:`<button class="btn sm" data-void="${r.id}">Void</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">no entries for these filters</div>`;
+  $$("[data-void]").forEach(b=>b.onclick=()=>modal({title:"Void this entry?",text:"Voided entries are excluded from totals but kept for audit.",
+    body:`<div class="field"><label>Reason</label><input class="input" id="vr" placeholder="e.g. entry made by someone else"></div>`,okText:"Void entry",okClass:"danger",
+    onOk:async root=>{ const v=$("#vr",root).value.trim(); if(!v) return "A reason is required."; await rpc("adm_void",{p_token:S.admToken,p_id:Number(b.dataset.void),p_reason:v}); tabLog(); }}));
+  $$("[data-restore]").forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_restore",{p_token:S.admToken,p_id:Number(b.dataset.restore)}); tabLog(); }catch(e){ admErr(e); } });
+}
+
+/* ---- Report component (live + uploaded) */
+function renderReport(el, all, {title="", exportName="stepaway-report.xlsx", meta={}}={}){
+  const st={dept:"",q:"",t:""};
+  const depts=[...new Set(all.map(r=>r.dept).filter(Boolean))].sort();
+  el.innerHTML=`<div class="card" style="margin-bottom:16px"><div class="filters" style="margin:0">
+      <div class="field"><label>Department</label><select class="input" id="rD"><option value="">All departments</option>${depts.map(d=>`<option>${esc(d)}</option>`).join("")}</select></div>
+      <div class="field" style="flex:1"><label>Employee</label><input class="input" id="rQ" placeholder="name or ID"></div>
+      <div class="field"><label>Break type</label><select class="input" id="rT"><option value="">All types</option>${[...new Set(all.map(r=>r.type))].sort().map(t=>`<option>${esc(t)}</option>`).join("")}</select></div>
+      <button class="btn lime" id="rX">⬇️ Export report (.xlsx)</button></div></div><div id="rBody"></div>`;
+  const draw=()=>{
+    const q=st.q.toLowerCase();
+    const rows=all.filter(r=>!r.voided&&(!st.dept||r.dept===st.dept)&&(!st.t||r.type===st.t)&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q)));
+    $("#rBody",el).innerHTML=reportHtml(rows);
+  };
+  $("#rD",el).onchange=e=>{st.dept=e.target.value;draw();}; $("#rT",el).onchange=e=>{st.t=e.target.value;draw();}; $("#rQ",el).oninput=e=>{st.q=e.target.value;draw();};
+  $("#rX",el).onclick=()=>{ const q=st.q.toLowerCase(); exportActivity(all.filter(r=>(!st.dept||r.dept===st.dept)&&(!st.t||r.type===st.t)&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q))),exportName,meta); };
+  draw();
+}
+function reportHtml(rows){
+  if(!rows.length) return `<div class="card empty">no data for this selection</div>`;
+  const total=rows.reduce((s,r)=>s+r.min,0), ended=rows.filter(r=>r.e), onT=ended.filter(r=>!r.over).length;
+  const moods=rows.filter(r=>r.mood), avgMood=moods.length?moods.reduce((s,r)=>s+r.mood,0)/moods.length:null;
+  const people=new Set(rows.map(r=>r.emp)).size;
+  const minD=new Date(rows.reduce((m,r)=>Math.min(m,r.s.getTime()),Infinity)), maxD=new Date(rows.reduce((m,r)=>Math.max(m,r.s.getTime()),-Infinity));
+  const span=(maxD-minD)/864e5;
+  // by type
+  const byT={}; rows.forEach(r=>{ (byT[r.type]??={n:0,min:0}); byT[r.type].n++; byT[r.type].min+=r.min; });
+  const tArr=Object.entries(byT).sort((a,b)=>b[1].min-a[1].min), tMax=Math.max(...tArr.map(x=>x[1].min));
+  const icon=name=>(BT.find(b=>b.name===name)||{icon:"•"}).icon;
+  // trend
+  const monthly=span>62, bucket=d=>monthly?`${d.getFullYear()}-${pad(d.getMonth()+1)}`:ymd(d);
+  const trend={}; rows.forEach(r=>{ const k=bucket(r.s); trend[k]=(trend[k]||0)+r.min; });
+  const keys=[]; { let d=new Date(minD); d.setHours(0,0,0,0); if(monthly) d.setDate(1);
+    while(d<=maxD && keys.length<400){ keys.push(bucket(d)); monthly?d.setMonth(d.getMonth()+1):d.setDate(d.getDate()+1); } }
+  const trendLbl=k=>monthly?new Date(k+"-01T00:00").toLocaleDateString([], {month:"short",year:"2-digit"}):new Date(k+"T00:00").toLocaleDateString([], {day:"2-digit",month:"short"});
+  // weekday + hour
+  const wd=Array(7).fill(0), hr=Array(24).fill(0); rows.forEach(r=>{ wd[r.s.getDay()]+=1; hr[r.s.getHours()]+=1; });
+  const wdN=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  // people
+  const byP={}; rows.forEach(r=>{ const p=(byP[r.emp]??={name:r.name,dept:r.dept,n:0,min:0,over:0,mood:[]}); p.n++; p.min+=r.min; if(r.over)p.over++; if(r.mood)p.mood.push(r.mood); });
+  const pArr=Object.entries(byP).sort((a,b)=>b[1].min-a[1].min);
+  const vbars=(vals,labels,tipFn,every=1)=>{ const mx=Math.max(1,...vals); return `<div class="vchart">${vals.map((v,i)=>`<div class="col" data-tip="${esc(tipFn(i,v))}"><i style="height:${(v/mx*100).toFixed(1)}%"></i></div>`).join("")}</div>
+    <div class="vlabels">${labels.map((l,i)=>`<span>${i%every===0?esc(l):""}</span>`).join("")}</div>`; };
+  return `<div class="kpis">
+      <div class="kpi"><div class="k">Breaks</div><div class="v">${rows.length.toLocaleString()}</div></div>
+      <div class="kpi"><div class="k">Total time away</div><div class="v">${fmtMin(total)}</div></div>
+      <div class="kpi"><div class="k">Avg break</div><div class="v">${fmtMin(total/rows.length)}</div></div>
+      <div class="kpi"><div class="k">Back on time</div><div class="v">${ended.length?Math.round(onT/ended.length*100):0}%</div></div>
+      <div class="kpi"><div class="k">Avg vibe</div><div class="v">${avgMood?`${VIBES[Math.round(avgMood)-1][1]} ${avgMood.toFixed(1)}`:"—"}</div></div>
+      <div class="kpi"><div class="k">People · range</div><div class="v" style="font-size:20px">${people} · ${Math.max(1,Math.round(span)+1)}d</div><div class="muted small">${fmtDate(minD)} → ${fmtDate(maxD)}</div></div>
+    </div>
+    <div class="grid2" style="margin-bottom:18px">
+      <div class="card"><h3 style="margin-bottom:12px">Time away by break type</h3>
+        ${tArr.map(([k,x])=>`<div class="hbar" data-tip="<b>${esc(k)}</b><br>${x.n} breaks · ${fmtMin(x.min)} total · avg ${fmtMin(x.min/x.n)}"><span>${icon(k)} ${esc(k)}</span><div class="tr"><i style="width:${(x.min/tMax*100).toFixed(1)}%"></i></div><span class="val">${fmtMin(x.min)} · ${x.n}</span></div>`).join("")}</div>
+      <div class="card"><h3 style="margin-bottom:6px">Time away per ${monthly?"month":"day"}</h3><p class="muted small" style="margin:0 0 4px">total minutes</p>
+        ${vbars(keys.map(k=>trend[k]||0),keys.map(trendLbl),(i,v)=>`<b>${trendLbl(keys[i])}</b><br>${fmtMin(v)} away`,Math.ceil(keys.length/8))}</div>
+      <div class="card"><h3 style="margin-bottom:6px">Breaks by weekday</h3><p class="muted small" style="margin:0 0 4px">number of breaks</p>
+        ${vbars(wd,wdN,(i,v)=>`<b>${wdN[i]}</b><br>${v} breaks`)}</div>
+      <div class="card"><h3 style="margin-bottom:6px">Breaks by hour of day</h3><p class="muted small" style="margin:0 0 4px">when breaks start</p>
+        ${vbars(hr,hr.map((_,i)=>String(i)),(i,v)=>`<b>${pad(i)}:00–${pad(i)}:59</b><br>${v} breaks`,3)}</div>
+    </div>
+    <div class="card"><h3 style="margin-bottom:12px">By employee</h3><div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Breaks</th><th>Total</th><th>Avg</th><th>Over limit</th><th>Avg vibe</th></tr></thead><tbody>
+      ${pArr.slice(0,300).map(([id,p])=>`<tr><td><b>${esc(p.name)}</b> <span class="muted mono small">${esc(id)}</span></td><td>${esc(p.dept)}</td><td>${p.n}</td><td class="mono">${fmtMin(p.min)}</td><td class="mono">${fmtMin(p.min/p.n)}</td>
+        <td>${p.over?`<span class="pill danger">${p.over}</span>`:"0"}</td><td>${p.mood.length?(p.mood.reduce((a,b)=>a+b,0)/p.mood.length).toFixed(1):"—"}</td></tr>`).join("")}</tbody></table></div></div>`;
+}
+
+/* ---- Reports (live data) */
+let repRange="7";
+async function tabReports(){
+  B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Reports</h1>
+    <div class="tabs" style="margin:0" id="rr">${[["0","Today"],["7","7 days"],["30","30 days"],["90","90 days"],["365","1 year"]].map(([k,l])=>`<button class="tab ${repRange===k?"on":""}" data-r="${k}">${l}</button>`).join("")}</div></div><div id="rep"><div class="empty">loading…</div></div>`;
+  $$("#rr .tab").forEach(t=>t.onclick=()=>{ repRange=t.dataset.r; tabReports(); });
+  const from=addDays(midnight(),-Number(repRange)), to=addDays(midnight(),1);
+  try{ const rows=await fetchRows(from,to); renderReport($("#rep"),rows,{exportName:`stepaway-report_${ymd(from)}_to_${ymd(new Date())}.xlsx`,meta:{"From":ymd(from),"To":ymd(new Date())}}); }
+  catch(e){ $("#rep").innerHTML=`<div class="card empty">${esc(e.message)}</div>`; }
+}
+
+/* ---- Old files report (upload) */
+let upFiles=[], upLive=false;
+function tabUpload(){
+  B().innerHTML=`<h1 style="margin-bottom:4px">Old files report</h1>
+    <p class="muted" style="margin:0 0 18px">Upload past exports, backups or archives (.xlsx, .xls or .csv — including v1 CSV exports) to see one combined report.
+    Files are read in your browser only — nothing is uploaded to Supabase, so it uses zero database space.</p>
+    <div class="card" style="margin-bottom:16px">
+      <label class="drop" id="drop"><input type="file" id="upIn" accept=".xlsx,.xls,.csv" multiple hidden>
+        <div style="font-size:36px">🗂️</div><b>Drop files here or click to browse</b><div class="muted small" style="margin-top:4px">you can add several files — duplicates are removed automatically</div></label>
+      <div id="upList" style="margin-top:14px"></div>
+      <label class="row small" style="margin-top:10px;cursor:pointer"><input type="checkbox" id="upLive" ${upLive?"checked":""}> also include all data currently in the database</label>
+    </div><div id="upRep"></div>`;
+  const inp=$("#upIn"), drop=$("#drop");
+  inp.onchange=()=>addFiles([...inp.files]);
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add("over");}; drop.ondragleave=()=>drop.classList.remove("over");
+  drop.ondrop=e=>{e.preventDefault();drop.classList.remove("over");addFiles([...e.dataTransfer.files]);};
+  $("#upLive").onchange=e=>{upLive=e.target.checked;drawUpload();};
+  drawUpload();
+}
+async function addFiles(files){
+  if(!needXlsx()) return;
+  for(const f of files){
+    try{ const rows=parseActivityBook(XLSX.read(await f.arrayBuffer(),{cellDates:true}));
+      upFiles.push({name:f.name,rows:rows.rows,skipped:rows.skipped}); toast(`${f.name}: ${rows.rows.length} rows loaded`); }
+    catch(e){ toast(`${f.name}: couldn't read (${e.message})`); }
+  }
+  drawUpload();
+}
+function parseActivityBook(wb){
+  const sn=wb.SheetNames.find(n=>/activit|log|archive/i.test(n))||wb.SheetNames[0];
+  const raw=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:"",raw:true});
+  const pick=(o,names)=>{ for(const k of Object.keys(o)){ if(names.includes(k.trim().toLowerCase())) return o[k]; } return ""; };
+  const toDate=v=>{ if(v instanceof Date) return isNaN(v)?null:v; if(typeof v==="number"&&v>20000) return new Date(Math.round((v-25569)*864e5)+new Date().getTimezoneOffset()*6e4); if(typeof v==="string"&&v.trim()){ const d=new Date(v); return isNaN(d)?null:d; } return null; };
+  let skipped=0; const rows=[];
+  raw.forEach(o=>{
+    const emp=String(pick(o,["employee id","emp id","employee","id"])).trim();
+    let s=toDate(pick(o,["start","start time","started"])); const dcol=toDate(pick(o,["date"]));
+    if(!s) s=dcol;
+    if(!emp||!s){ skipped++; return; }
+    const e=toDate(pick(o,["end","end time","ended"]));
+    let min=Number(pick(o,["duration (min)","duration","minutes","duration (mins)"]));
+    if(!isFinite(min)||min===0&&e) min=e?(e-s)/60000:0;
+    const type=String(pick(o,["break type","type"])).trim()||"Unknown";
+    const status=String(pick(o,["status"])).trim(), voided=/void/i.test(status)||/^yes$/i.test(String(pick(o,["voided"])).trim());
+    const overV=String(pick(o,["over limit"])).trim(); const mood=Number(pick(o,["vibe (1-5)","vibe","mood"]))||null;
+    rows.push({emp,name:String(pick(o,["employee name","name"])).trim()||emp,dept:String(pick(o,["department","dept"])).trim(),t:(BT.find(b=>b.name===type)||{c:0}).c,type,
+      s,e,min,lim:Number(pick(o,["limit (min)"]))||"",over:/^yes$/i.test(overV)||/over/i.test(status),mood:mood>=1&&mood<=5?mood:null,voided,note:String(pick(o,["note"])),vr:String(pick(o,["void reason"])),status:status||(voided?"Voided":"")});
+  });
+  return {rows,skipped};
+}
+async function drawUpload(){
+  $("#upList").innerHTML=upFiles.length?upFiles.map((f,i)=>`<div class="between" style="padding:8px 0;border-bottom:1px solid var(--line)"><span>📄 <b>${esc(f.name)}</b> <span class="muted small">${f.rows.length} rows${f.skipped?` · ${f.skipped} skipped`:""}</span></span><button class="btn sm" data-rm="${i}">Remove</button></div>`).join(""):"";
+  $$("[data-rm]").forEach(b=>b.onclick=()=>{ upFiles.splice(Number(b.dataset.rm),1); drawUpload(); });
+  let all=upFiles.flatMap(f=>f.rows);
+  if(upLive){ try{ $("#upRep").innerHTML=`<div class="empty">loading database data…</div>`; all=all.concat(await fetchRows(new Date(2000,0,1),addDays(midnight(),1))); }catch(e){ toast(e.message); } }
+  const seen=new Set(); all=all.filter(r=>{ const k=`${r.emp}|${Math.round(r.s.getTime()/60000)}|${r.type}`; if(seen.has(k)) return false; seen.add(k); return true; });
+  if(!all.length){ $("#upRep").innerHTML=upFiles.length?`<div class="card empty">no usable rows found in these files</div>`:""; return; }
+  renderReport($("#upRep"),all,{exportName:`stepaway-combined-report_${ymd(new Date())}.xlsx`,meta:{"Source files":upFiles.map(f=>f.name).join(", ")||"—","Includes live data":upLive?"Yes":"No"}});
+}
+
+/* ---- Employees */
+async function tabPeople(){
+  B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Employees</h1><button class="btn" id="tpl">⬇️ Import template</button></div>
+    <div class="grid2" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)">
+      <div class="card"><div class="between" style="margin-bottom:10px"><h2 style="margin:0" id="pCount">Directory</h2><input class="input" id="pQ" placeholder="search" style="max-width:200px"></div><div id="pT"><div class="empty">loading…</div></div></div>
+      <div class="side">
+        <div class="card"><h2>Add employee</h2>
+          <div class="field"><label>Employee ID</label><input class="input mono" id="nId" maxlength="20"></div>
+          <div class="field"><label>Full name</label><input class="input" id="nName" maxlength="60"></div>
+          <div class="field"><label>Department</label><input class="input" id="nDept" maxlength="40" list="deptList"><datalist id="deptList">${(S.ov.depts||[]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
+          <div class="err" id="nErr"></div><button class="btn lime" id="nAdd" style="width:100%">Add employee</button></div>
+        <div class="card"><h2>Bulk import</h2><p class="muted small" style="margin:0 0 10px">Upload an Excel/CSV with columns <b>Employee ID, Name, Department</b> — or paste lines like <span class="mono">1002, Priya Sharma, Support</span>.</p>
+          <input type="file" id="bFile" accept=".xlsx,.xls,.csv" class="input" style="margin-bottom:10px">
+          <textarea class="input" id="bTxt" rows="4" placeholder="1002, Priya Sharma, Support"></textarea>
+          <button class="btn" id="bGo" style="width:100%;margin-top:10px">Import</button></div>
+      </div></div>`;
+  let list=[];
+  const draw=()=>{ const q=$("#pQ").value.toLowerCase(); const rows=list.filter(e=>!q||e.name.toLowerCase().includes(q)||e.id.toLowerCase().includes(q)||e.dept.toLowerCase().includes(q));
+    $("#pCount").textContent=`Directory (${list.filter(e=>e.active).length} active)`;
+    $("#pT").innerHTML=rows.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>⚡ PB</th><th></th></tr></thead><tbody>
+      ${rows.map(e=>`<tr style="${e.active?"":"opacity:.5"}"><td>${esc(e.av)} <b>${esc(e.name)}</b> <span class="muted mono small">${esc(e.id)}</span></td><td>${esc(e.dept)}</td>
+        <td>${!e.active?`<span class="pill grey">inactive</span>`:e.online?`<span class="pill">signed in</span>`:`<span class="pill grey">offline</span>`}</td><td class="mono small">${e.best?e.best+" ms":"—"}</td>
+        <td style="text-align:right">${e.active?`<button class="btn sm" data-off="${esc(e.id)}">Deactivate</button>`:`<button class="btn sm" data-on="${esc(e.id)}">Reactivate</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">no employees found</div>`;
+    $$("[data-off]").forEach(b=>b.onclick=()=>modal({title:"Deactivate employee?",text:"They won't be able to sign in. Past records are kept.",okText:"Deactivate",okClass:"danger",onOk:async()=>{ await rpc("adm_emp_active",{p_token:S.admToken,p_id:b.dataset.off,p_active:false}); await reload(); }}));
+    $$("[data-on]").forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_emp_active",{p_token:S.admToken,p_id:b.dataset.on,p_active:true}); await reload(); }catch(e){ admErr(e); } }); };
+  const reload=async()=>{ list=await rpc("adm_employees",{p_token:S.admToken}); draw(); };
+  $("#pQ").oninput=draw;
+  const save=async rows=>{ const n=await rpc("adm_emp_save",{p_token:S.admToken,p_rows:rows}); await reload(); loadOv().catch(()=>{}); return n; };
+  $("#nAdd").onclick=async()=>{ const id=$("#nId").value.trim(), name=$("#nName").value.trim(); if(!id||!name) return $("#nErr").textContent="ID and name are required.";
+    if(list.some(e=>e.id===id)) return $("#nErr").textContent=`ID ${id} already exists.`;
+    try{ await save([{id,name,dept:$("#nDept").value.trim()}]); ["#nId","#nName","#nDept"].forEach(s=>$(s).value=""); $("#nErr").textContent=""; toast("employee added 🎉"); }catch(e){ $("#nErr").textContent=e.message; } };
+  $("#bGo").onclick=async()=>{
+    let rows=[];
+    const f=$("#bFile").files[0];
+    if(f){ if(!needXlsx()) return; const wb=XLSX.read(await f.arrayBuffer()); const raw=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      const pick=(o,ns)=>{ for(const k of Object.keys(o)) if(ns.includes(k.trim().toLowerCase())) return String(o[k]).trim(); return ""; };
+      rows=raw.map(o=>({id:pick(o,["employee id","id","emp id"]),name:pick(o,["name","employee name","full name"]),dept:pick(o,["department","dept"])})); }
+    $("#bTxt").value.split("\n").forEach(l=>{ if(!l.trim()) return; const [id,name,dept]=l.split(",").map(x=>(x||"").trim()); rows.push({id,name,dept}); });
+    rows=rows.filter(r=>r.id&&r.name); if(!rows.length) return toast("nothing to import — check the columns");
+    try{ const n=await save(rows); toast(`imported ${n} employee(s)`); $("#bTxt").value=""; $("#bFile").value=""; }catch(e){ admErr(e); } };
+  $("#tpl").onclick=()=>{ if(needXlsx()) writeBook([["Employees",[{"Employee ID":"1002","Name":"Priya Sharma","Department":"Support"},{"Employee ID":"1003","Name":"Rahul Verma","Department":"Sales"}],[14,24,18]]],"stepaway-employee-template.xlsx"); };
+  try{ await reload(); }catch(e){ $("#pT").innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* ---- Lounge moderation */
+function tabLounge(){
+  B().innerHTML=`<h1 style="margin-bottom:4px">The Lounge</h1><p class="muted" style="margin:0 0 18px">Read every channel, post as Admin, and remove messages. Messages auto-delete after ${S.ov.settings.chat_days} day(s) to keep the database small.</p><div class="card lounge" id="admL" style="height:600px"></div>`;
+  const ch=[{id:"all",label:"# general"},{id:"fun",label:"# memes-n-vibes"},...(S.ov.depts||[]).map(d=>({id:"d:"+d,label:"# "+d.toLowerCase().replace(/\s+/g,"-")}))];
+  mountLounge($("#admL"),{token:S.admToken,channels:ch,admin:true});
+}
+
+/* ---- Storage & backups */
+async function tabStorage(){
+  B().innerHTML=`<h1 style="margin-bottom:4px">Storage & backups</h1><p class="muted" style="margin:0 0 18px">Keep Supabase lean: download backups, then archive old activity out of the database.</p><div id="stB"><div class="empty">loading…</div></div>`;
+  let s; try{ s=await rpc("adm_storage",{p_token:S.admToken}); }catch(e){ $("#stB").innerHTML=`<div class="card empty">${esc(e.message)}</div>`; return; }
+  const FREE=500*1048576, pct=Math.min(100,s.db/FREE*100);
+  $("#stB").innerHTML=`<div class="grid2">
+    <div class="card"><h2>Database usage</h2>
+      <div class="between small" style="margin-bottom:6px"><span>${fmtBytes(s.db)} used</span><span class="muted">Supabase free tier: 500 MB</span></div>
+      <div class="meter" data-tip="${pct.toFixed(2)}% of 500 MB"><i style="width:${Math.max(pct,.5)}%"></i></div>
+      <div class="tbl-wrap" style="margin-top:16px"><table><thead><tr><th>Table</th><th>Rows</th><th>Size</th></tr></thead><tbody>
+      ${s.tables.map(t=>`<tr><td>${esc(t.name)}</td><td class="mono">${Number(t.rows).toLocaleString()}</td><td class="mono">${fmtBytes(t.bytes)}</td></tr>`).join("")}</tbody></table></div>
+      <p class="muted small" style="margin:12px 0 0;line-height:1.5">Oldest activity in DB: <b>${s.oldest?fmtDate(s.oldest):"—"}</b>. Chat auto-deletes after ${S.ov.settings.chat_days} day(s); audit trail after ${S.ov.settings.audit_days} days (change in Settings).
+        Postgres reuses freed space automatically after a purge.</p></div>
+    <div class="side">
+      <div class="card"><h2>⬇️ Full backup</h2><p class="muted small" style="margin:0 0 12px">One Excel file with every activity entry, the employee list and the audit trail. Keep it somewhere safe — you can load it in “Old files report” any time.</p>
+        <button class="btn lime" id="bk" style="width:100%">Download full backup (.xlsx)</button></div>
+      <div class="card"><h2>🧹 Archive & free up space</h2><p class="muted small" style="margin:0 0 12px">Downloads an Excel archive of completed entries older than the cut-off, then deletes them from Supabase.</p>
+        <div class="field"><label>Archive entries older than</label><select class="input" id="ag">${[30,60,90,180,365].map(d=>`<option value="${d}" ${d===90?"selected":""}>${d} days</option>`).join("")}</select></div>
+        <button class="btn violet" id="ar" style="width:100%">Archive to Excel & purge</button></div>
+    </div></div>`;
+  $("#bk").onclick=async()=>{ if(!needXlsx()) return; const b=$("#bk"); b.disabled=true; b.textContent="preparing…";
+    try{ const [rows,emps,aud]=await Promise.all([fetchRows(new Date(2000,0,1),addDays(midnight(),2)),rpc("adm_employees",{p_token:S.admToken}),rpc("adm_audit",{p_token:S.admToken})]);
+      const sum=summaryRows(rows);
+      writeBook([["Activities",sheetRows(rows),ACT_W],
+        ["Employees",emps.map(e=>({"Employee ID":e.id,"Name":e.name,"Department":e.dept,"Avatar":e.av,"Active":e.active?"Yes":"No","Reaction PB (ms)":e.best??""})),[14,24,18,8,8,16]],
+        ["By Employee",sum.people,[32,8,12,10,10,9]],["Audit",aud.map(a=>({"When":new Date(a.at),"Actor":a.actor,"Action":a.action})),[18,14,70]],
+        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.1"}],[16,30]]],
+        `stepaway-backup_${ymd(new Date())}.xlsx`);
+      toast("backup downloaded ✅"); }catch(e){ admErr(e); }
+    b.disabled=false; b.textContent="Download full backup (.xlsx)"; };
+  $("#ar").onclick=async()=>{ if(!needXlsx()) return; const days=Number($("#ag").value), cut=addDays(midnight(),-days);
+    let rows; try{ rows=(await fetchRows(new Date(2000,0,1),cut)).filter(r=>r.e); }catch(e){ return admErr(e); }
+    if(!rows.length) return toast(`nothing older than ${days} days — you're already lean ✨`);
+    exportActivity(rows,`stepaway-archive_before_${ymd(cut)}.xlsx`,{"Archived before":ymd(cut)});
+    modal({title:`Purge ${rows.length.toLocaleString()} entries?`,text:`Your archive file <b>stepaway-archive_before_${ymd(cut)}.xlsx</b> has been downloaded. Check it opened correctly, then type <b>PURGE</b> to delete these entries from Supabase. This can't be undone.`,
+      body:`<input class="input mono" id="pg" placeholder="PURGE">`,okText:"Delete from database",okClass:"danger",
+      onOk:async root=>{ if($("#pg",root).value.trim()!=="PURGE") return "Type PURGE to confirm."; const n=await rpc("adm_purge",{p_token:S.admToken,p_before:cut.toISOString()}); toast(`purged ${n} entries 🧹`); setTimeout(tabStorage,0); }});
+  };
+}
+
+/* ---- Settings */
+async function tabSettings(){
+  const st=S.ov.settings;
+  B().innerHTML=`<h1 style="margin-bottom:18px">Settings</h1><div class="grid2">
+    <div class="card"><h2>Break time limits (minutes)</h2>
+      ${BT.map(b=>`<div class="between" style="padding:6px 0"><span>${b.icon} ${esc(b.name)}</span><input class="input mono" type="number" min="1" max="240" data-lim="${b.c}" value="${limitOf(b.c,st.limits)}" style="width:96px"></div>`).join("")}
+      <h2 style="margin-top:20px">Data retention</h2>
+      <div class="between" style="padding:6px 0"><span>Delete chat messages after (days)</span><input class="input mono" type="number" min="1" max="30" id="cd" value="${st.chat_days}" style="width:96px"></div>
+      <div class="between" style="padding:6px 0"><span>Delete audit entries after (days)</span><input class="input mono" type="number" min="7" max="365" id="ad" value="${st.audit_days}" style="width:96px"></div>
+      <div class="err" id="sErr"></div><button class="btn lime" id="sSave">Save settings</button></div>
+    <div class="side">
+      <div class="card"><h2>Audit trail</h2><div id="aud" class="mini-list" style="max-height:360px;overflow:auto"><div class="empty">loading…</div></div></div>
+    </div></div>`;
+  $("#sSave").onclick=async()=>{ const limits={}; $$("[data-lim]").forEach(i=>{ const v=parseInt(i.value,10); limits[i.dataset.lim]=v>0&&v<=240?v:limitOf(i.dataset.lim,st.limits); });
+    const cd=parseInt($("#cd").value,10), ad=parseInt($("#ad").value,10);
+    if(!(cd>=1&&cd<=30)) return $("#sErr").textContent="Chat retention must be 1–30 days."; if(!(ad>=7&&ad<=365)) return $("#sErr").textContent="Audit retention must be 7–365 days.";
+    try{ await rpc("adm_settings_save",{p_token:S.admToken,p_limits:limits,p_chat_days:cd,p_audit_days:ad}); await loadOv(); $("#sErr").textContent=""; toast("settings saved ✅"); }catch(e){ $("#sErr").textContent=e.message; } };
+  try{ const a=await rpc("adm_audit",{p_token:S.admToken});
+    $("#aud").innerHTML=a.length?a.map(x=>`<div class="it" style="font-size:13px;align-items:flex-start"><span style="flex:1">${esc(x.action)} <span class="muted">· ${esc(x.actor)}</span></span><span class="muted mono small" style="white-space:nowrap">${fmtDate(x.at)} ${fmtTime(x.at)}</span></div>`).join(""):`<div class="empty">no activity yet</div>`; }
+  catch(e){ $("#aud").innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
+}
+
+
+/* ---- Who am I (top bar) */
+function showWho(){ if(S.me) $("#who").textContent=`${isSuper()?"👑 Super admin":"🛡️ Admin"} · ${S.me.name||S.me.username}`; }
+
+/* ---- Password form (shared by forced change + My account) */
+function pwFormHtml(firstTime){
+  return `<div class="field"><label>${firstTime?"Current (temporary) password":"Current password"}</label><input class="input" type="password" id="pwO" autocomplete="current-password"></div>
+    <div class="field"><label>New password</label><input class="input" type="password" id="pwN" autocomplete="new-password"></div>
+    <div class="field"><label>Confirm new password</label><input class="input" type="password" id="pwN2" autocomplete="new-password"></div>
+    <p class="muted small" style="margin:0 0 8px">At least 8 characters with a letter, a number and a symbol.</p>
+    <div class="err" id="pwErr"></div>`;
+}
+async function submitPw(){
+  const o=$("#pwO").value, n=$("#pwN").value, err=m=>{ $("#pwErr").textContent=m; return false; };
+  if(!o||!n) return err("Fill in all fields.");
+  if(n!==$("#pwN2").value) return err("New passwords don't match.");
+  const r=await rpc("adm_change_password",{p_token:S.admToken,p_old:o,p_new:n});
+  if(!r.ok) return err(r.msg);
+  S.me.must_change=false; return true;
+}
+function renderForcePw(){
+  showWho();
+  $("#app").innerHTML=`<div style="min-height:calc(100vh - 160px);display:grid;place-items:center"><div class="card login-card" style="width:100%;max-width:460px">
+    <div style="font-size:40px">🔑</div><h2 style="margin:6px 0 4px">Set your own password</h2>
+    <p class="muted" style="margin:0 0 18px">Welcome, <b>${esc(S.me?.name||S.me?.username||"")}</b>. You're using a temporary password — choose a new one to open the admin console.</p>
+    ${pwFormHtml(true)}
+    <button class="btn violet" id="pwGo">Save & continue</button></div></div>`;
+  $("#pwO").focus();
+  const goPw=async()=>{ $("#pwGo").disabled=true; try{ if(await submitPw()){ toast("password updated 🔐"); go("admin"); return; } }catch(e){ $("#pwErr").textContent=e.message; } $("#pwGo").disabled=false; };
+  $("#pwGo").onclick=goPw; ["#pwO","#pwN","#pwN2"].forEach(s=>$(s).addEventListener("keydown",e=>{ if(e.key==="Enter") goPw(); }));
+}
+
+/* ---- My account (everyone) */
+function tabAccount(){
+  const me=S.me;
+  B().innerHTML=`<h1 style="margin-bottom:18px">My account</h1><div class="grid2">
+    <div class="card"><h2>Profile</h2>
+      <div class="mini-list">
+        <div class="it"><span class="muted" style="width:110px">Username</span><b class="mono">${esc(me.username)}</b></div>
+        <div class="it"><span class="muted" style="width:110px">Name</span><b>${esc(me.name||"—")}</b></div>
+        <div class="it"><span class="muted" style="width:110px">Role</span>${isSuper()?`<span class="pill">👑 Super admin</span>`:`<span class="pill violet">🛡️ Admin</span>`}</div>
+      </div>
+      <h3 style="margin:18px 0 8px">What you can do</h3>
+      <ul class="muted small" style="line-height:1.8;margin:0;padding-left:18px">
+        <li>See live status, approve or decline sign-outs</li><li>View & export the activity log and reports</li>
+        <li>Create, import and deactivate employees</li><li>Moderate the Lounge</li>
+        ${isSuper()?`<li><b style="color:var(--ink)">Create and manage admins</b></li><li><b style="color:var(--ink)">Change settings, view the audit trail, back up & purge data</b></li>`:`<li>Change your own password</li>`}
+      </ul></div>
+    <div class="card"><h2>Change password</h2>${pwFormHtml(false)}<button class="btn violet" id="pwGo">Update password</button>
+      <p class="muted small" style="margin:12px 0 0">Changing your password signs you out on your other devices.</p></div></div>`;
+  $("#pwGo").onclick=async()=>{ try{ if(await submitPw()){ ["#pwO","#pwN","#pwN2"].forEach(s=>$(s).value=""); $("#pwErr").textContent=""; toast("password updated 🔐"); } }catch(e){ $("#pwErr").textContent=e.message; } };
+}
+
+/* ---- Admins (super admin only) */
+function tempPassword(){
+  const A="ABCDEFGHJKLMNPQRSTUVWXYZ", a="abcdefghijkmnpqrstuvwxyz", d="23456789", y="#@$%&*!?";
+  const r=n=>{ const b=new Uint32Array(1); crypto.getRandomValues(b); return b[0]%n; }, pick=s=>s[r(s.length)];
+  const chars=[pick(A),pick(a),pick(a),pick(d),pick(d),pick(y),pick(A),pick(a),pick(d),pick(a)];
+  for(let i=chars.length-1;i>0;i--){ const j=r(i+1); [chars[i],chars[j]]=[chars[j],chars[i]]; }
+  return chars.join("");
+}
+function shareCreds(title, username, pass){
+  const txt=`StepAway admin login\nLink: ${location.origin+location.pathname}\nUsername: ${username}\nTemporary password: ${pass}\nYou'll be asked to set your own password at first sign-in.`;
+  modal({title, text:"Share these details privately. The temporary password is shown only once.",
+    body:`<pre class="mono" style="white-space:pre-wrap;background:var(--card2);padding:12px;border-radius:12px;font-size:13px;margin:0">${esc(txt)}</pre>`,
+    okText:"📋 Copy", cancelText:"Done", onOk:async()=>{ try{ await navigator.clipboard.writeText(txt); toast("copied 📋"); }catch(e){ toast("couldn't copy — select the text instead"); } return false; }});
+}
+async function tabAdmins(){
+  B().innerHTML=`<h1 style="margin-bottom:4px">Admins</h1><p class="muted" style="margin:0 0 18px">Only you (the super admin) can see this page. Admins can manage employees but can't create other admins.</p>
+    <div class="grid2" style="grid-template-columns:minmax(0,1fr) 330px">
+      <div class="card"><h2>Admin accounts</h2><div id="admT"><div class="empty">loading…</div></div></div>
+      <div class="card"><h2>Create admin</h2>
+        <div class="field"><label>Username (login ID)</label><input class="input mono" id="naU" maxlength="30" placeholder="e.g. neha.g"></div>
+        <div class="field"><label>Full name</label><input class="input" id="naN" maxlength="60"></div>
+        <div class="field"><label>Temporary password</label><div class="row"><input class="input mono" id="naP" value="${tempPassword()}"><button class="btn sm" id="naGen" title="Generate">🎲</button></div></div>
+        <p class="muted small" style="margin:0 0 10px">They'll be asked to set their own password at first sign-in.</p>
+        <div class="err" id="naErr"></div><button class="btn lime" id="naGo" style="width:100%">Create admin</button></div></div>`;
+  const reload=async()=>{ const list=await rpc("adm_admins",{p_token:S.admToken});
+    $("#admT").innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Admin</th><th>Role & status</th><th>Created</th><th></th></tr></thead><tbody>
+      ${list.map(a=>`<tr style="${a.active?"":"opacity:.5"}"><td><b>${esc(a.name||a.username)}</b><div class="muted mono small">${esc(a.username)}</div></td>
+        <td><div class="row" style="flex-wrap:wrap;gap:6px">${a.role==="super"?`<span class="pill">👑 super</span>`:`<span class="pill violet">🛡️ admin</span>`}
+        ${!a.active?`<span class="pill grey">inactive</span>`:a.must_change?`<span class="pill warn">awaiting new password</span>`:a.online?`<span class="pill">online</span>`:`<span class="pill grey">active</span>`}</div></td>
+        <td class="small" style="white-space:nowrap">${fmtDate(a.created_at)}<div class="muted">by ${esc(a.created_by||"—")}</div></td>
+        <td><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">${a.role==="super"?`<span class="muted small">password: My account</span>`:`<button class="btn sm" data-reset="${a.id}" data-u="${esc(a.username)}">Reset password</button>
+          ${a.active?`<button class="btn sm" data-off="${a.id}">Deactivate</button>`:`<button class="btn sm" data-on="${a.id}">Reactivate</button>`}`}</div></td></tr>`).join("")}</tbody></table></div>`;
+    $$("[data-reset]",B()).forEach(b=>b.onclick=()=>{ const pw=tempPassword();
+      modal({title:`Reset password for ${esc(b.dataset.u)}?`,text:"They'll be signed out everywhere and must set a new password at next sign-in.",
+        body:`<div class="field"><label>New temporary password</label><input class="input mono" id="rp" value="${pw}"></div>`,okText:"Reset password",okClass:"danger",
+        onOk:async root=>{ const v=$("#rp",root).value; const r=await rpc("adm_admin_reset",{p_token:S.admToken,p_id:Number(b.dataset.reset),p_pass:v}); if(!r.ok) return r.msg;
+          setTimeout(()=>{ shareCreds("Password reset ✅",b.dataset.u,v); reload(); },0); }}); });
+    $$("[data-off]",B()).forEach(b=>b.onclick=()=>modal({title:"Deactivate this admin?",text:"They'll be signed out and won't be able to sign in until reactivated.",okText:"Deactivate",okClass:"danger",
+      onOk:async()=>{ await rpc("adm_admin_set_active",{p_token:S.admToken,p_id:Number(b.dataset.off),p_active:false}); await reload(); }}));
+    $$("[data-on]",B()).forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_admin_set_active",{p_token:S.admToken,p_id:Number(b.dataset.on),p_active:true}); await reload(); }catch(e){ admErr(e); } });
+  };
+  $("#naGen").onclick=()=>$("#naP").value=tempPassword();
+  $("#naGo").onclick=async()=>{ const u=$("#naU").value.trim(), n=$("#naN").value.trim(), pw=$("#naP").value;
+    if(!u||!n) return $("#naErr").textContent="Username and full name are required.";
+    try{ const r=await rpc("adm_admin_create",{p_token:S.admToken,p_username:u,p_name:n,p_pass:pw}); if(!r.ok) return $("#naErr").textContent=r.msg;
+      $("#naErr").textContent=""; $("#naU").value=""; $("#naN").value=""; $("#naP").value=tempPassword(); await reload(); shareCreds("Admin created 🎉",u,pw); }
+    catch(e){ $("#naErr").textContent=e.message; } };
+  try{ await reload(); }catch(e){ $("#admT").innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* =====================================================================
+   LIVE THEME (employee dashboard)
+   ===================================================================== */
+const THEMES={
+  live:    {label:"Live",     icon:"🕒", desc:"follows the clock"},
+  aurora:  {label:"Aurora",   icon:"🌌", b:["#8b5cf6","#3de0ff","#5ef2b0"], p:"stars"},
+  sunset:  {label:"Sunset",   icon:"🌇", b:["#ff5fa2","#ffb86b","#8b5cf6"], p:"bubbles"},
+  ocean:   {label:"Ocean",    icon:"🌊", b:["#3de0ff","#2563eb","#5ef2b0"], p:"bubbles"},
+  matcha:  {label:"Matcha",   icon:"🍵", b:["#c6ff3d","#5ef2b0","#3de0ff"], p:"bubbles"},
+  sakura:  {label:"Sakura",   icon:"🌸", b:["#ff8fc8","#ff5fa2","#c4b0ff"], p:"petals"},
+  midnight:{label:"Midnight", icon:"🌙", b:["#4c1d95","#1e3a8a","#831843"], p:"stars"},
+};
+function liveSlot(h){
+  if(h>=5&&h<8)   return {name:"sunrise",      icon:"🌅", b:["#ff8fab","#ffb86b","#8b5cf6"], p:"bubbles", greet:"good morning"};
+  if(h>=8&&h<12)  return {name:"morning glow", icon:"☀️", b:["#c6ff3d","#3de0ff","#ffb86b"], p:"bubbles", greet:"good morning"};
+  if(h>=12&&h<16) return {name:"afternoon",    icon:"🌤️", b:["#3de0ff","#5ef2b0","#8b5cf6"], p:"bubbles", greet:"good afternoon"};
+  if(h>=16&&h<19) return {name:"golden hour",  icon:"🌇", b:["#ffb86b","#ff5fa2","#8b5cf6"], p:"petals",  greet:"good evening"};
+  if(h>=19&&h<23) return {name:"night shift",  icon:"🌙", b:["#8b5cf6","#1e40af","#ff5fa2"], p:"stars",   greet:"good evening"};
+  return               {name:"late night",   icon:"🌌", b:["#4c1d95","#1e3a8a","#0e7490"], p:"stars",   greet:"hey night owl"};
+}
+function currentTheme(){
+  const k=ls.get("sa2_theme")||"live", slot=liveSlot(new Date().getHours());
+  if(k==="live"||!THEMES[k]) return {...slot,key:"live"};
+  return {...THEMES[k],name:THEMES[k].label,key:k,greet:slot.greet};
+}
+function applyTheme(){
+  const t=currentTheme(), st=document.documentElement.style;
+  t.b.forEach((c,i)=>st.setProperty(`--b${i+1}`,c)); PART.mode=t.p;
+  const changed=S.theme&&(S.theme.name!==t.name); S.theme=t;
+  if(changed && S.view==="emp" && S.emp) updateEmp();
+}
+function pickTheme(){
+  const cur=ls.get("sa2_theme")||"live";
+  const sw=k=>{ const b=k==="live"?liveSlot(new Date().getHours()).b:THEMES[k].b; return `background:linear-gradient(135deg,${b[0]},${b[1]} 55%,${b[2]})`; };
+  modal({title:"🎨 pick your vibe",text:"<b>Live</b> shifts colours through the day — sunrise, golden hour, night shift. Saved on this device only.",
+    body:`<div class="themes">${Object.entries(THEMES).map(([k,t])=>`<button data-th="${k}" class="${k===cur?"on":""}"><span class="sw" style="${sw(k)}"></span><span>${t.icon} ${t.label}${t.desc?`<div class="muted small" style="font-weight:500">${t.desc}</div>`:""}</span></button>`).join("")}</div>`,
+    okText:"", cancelText:"Close"});
+  $$("[data-th]").forEach(b=>b.onclick=()=>{ ls.set("sa2_theme",b.dataset.th); $$("[data-th]").forEach(x=>x.classList.toggle("on",x===b)); applyTheme(); if(S.emp) updateEmp(); });
+}
+
+/* particles: twinkling stars at night, rising bubbles by day, drifting petals at golden hour */
+const PART={mode:"bubbles",list:[],raf:0};
+(function particles(){
+  const c=$("#particles"), x=c.getContext("2d"); let W=0,H=0;
+  const reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const size=()=>{ W=c.width=innerWidth; H=c.height=innerHeight; };
+  const seed=()=>{ PART.list=Array.from({length:Math.min(60,Math.round(W*H/26000))},()=>({x:Math.random()*W,y:Math.random()*H,r:Math.random()*2.2+.6,s:Math.random()*.35+.12,ph:Math.random()*6.28,w:Math.random()*.6+.2})); };
+  size(); seed(); addEventListener("resize",()=>{ size(); seed(); });
+  const draw=t=>{
+    PART.raf=requestAnimationFrame(draw);
+    if(document.hidden||reduce) return;
+    x.clearRect(0,0,W,H); const m=PART.mode, calm=document.body.classList.contains("calm");
+    if(calm) return;
+    for(const p of PART.list){
+      if(m==="stars"){ const a=.25+.6*Math.abs(Math.sin(t/900*p.w+p.ph)); x.fillStyle=`rgba(255,255,255,${a})`; x.beginPath(); x.arc(p.x,p.y,p.r*.8,0,6.28); x.fill(); }
+      else if(m==="petals"){ p.y+=p.s*1.2; p.x+=Math.sin(t/1400+p.ph)*.5; if(p.y>H+10){p.y=-10;p.x=Math.random()*W;}
+        x.save(); x.translate(p.x,p.y); x.rotate(t/1600+p.ph); x.fillStyle="rgba(255,170,210,.45)"; x.beginPath(); x.ellipse(0,0,p.r*2.4,p.r*1.3,0,0,6.28); x.fill(); x.restore(); }
+      else { p.y-=p.s; p.x+=Math.sin(t/1800+p.ph)*.25; if(p.y<-10){p.y=H+10;p.x=Math.random()*W;}
+        x.strokeStyle="rgba(255,255,255,.22)"; x.lineWidth=1; x.beginPath(); x.arc(p.x,p.y,p.r*2.2,0,6.28); x.stroke(); }
+    }
+  };
+  PART.raf=requestAnimationFrame(draw);
+})();
+setInterval(applyTheme,60000);
+
+/* =====================================================================
+   BOOKMARK / INSTALL
+   ===================================================================== */
+let installEvt=null;
+addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); installEvt=e; });
+function bookmarkModal(){
+  const url=location.origin+location.pathname, ua=navigator.userAgent;
+  const ios=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1), android=/Android/.test(ua);
+  const mac=/Mac/.test(navigator.platform||ua)&&!ios, mobile=ios||android;
+  const how = ios
+    ? `<b>On iPhone / iPad:</b> tap the <b>Share</b> button <span class="kbd">⬆︎</span> in Safari, then choose <b>Add to Home Screen</b> (opens like an app) or <b>Add Bookmark</b>.`
+    : android
+    ? `<b>On Android:</b> tap the browser menu <span class="kbd">⋮</span>, then <b>☆</b> to bookmark, or <b>Add to Home screen</b> to get an app icon.`
+    : `Press <span class="kbd">${mac?"⌘":"Ctrl"}</span> + <span class="kbd">D</span> to bookmark this page — or drag the button above onto your bookmarks bar.`;
+  modal({title:"⭐ Keep StepAway one click away",
+    body:`${installEvt?`<button class="btn lime" id="instBtn" style="width:100%;margin-bottom:12px">📲 Install StepAway as an app</button>`:""}
+      ${mobile?"":`<div style="text-align:center;margin:6px 0 4px"><a class="dragbm" id="dragBm" href="${esc(url)}" title="StepAway" draggable="true">⭐ StepAway</a>
+        <div class="muted small" style="margin-top:8px">drag this button onto your bookmarks bar</div></div>`}
+      <div class="howto">${how}</div>
+      <div class="field" style="margin-top:14px"><label>Link</label><div class="row"><input class="input mono" readonly value="${esc(url)}" id="bmUrl"><button class="btn sm" id="bmCopy">Copy</button></div></div>`,
+    okText:"", cancelText:"Close"});
+  if($("#dragBm")) $("#dragBm").onclick=e=>{ e.preventDefault(); toast(`drag it to your bookmarks bar — or press ${mac?"⌘":"Ctrl"}+D`); };
+  $("#bmCopy").onclick=async()=>{ try{ await navigator.clipboard.writeText(url); toast("link copied 📋"); }catch(e){ $("#bmUrl").select(); } };
+  if($("#instBtn")) $("#instBtn").onclick=async()=>{ installEvt.prompt(); const r=await installEvt.userChoice; installEvt=null; $("#modalRoot").innerHTML=""; if(r.outcome==="accepted") toast("installed 🎉"); };
+}
+
+/* =====================================================================
+   START
+   ===================================================================== */
+applyTheme();
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && S.view==="emp" && S.empToken && S.emp){ loadEmp().then(updateEmp).catch(()=>{}); } });
+boot();
+</script>
+</body>
+</html>
