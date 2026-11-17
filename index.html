@@ -261,7 +261,7 @@ tr.voided td{opacity:.42;text-decoration:line-through} tr.voided td:last-child{o
 </head>
 <body>
 <div class="top">
-  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.1</span></div>
+  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.2</span></div>
   <div class="right"><span class="clock" id="clock"></span><span class="rolechip" id="who"></span><button class="btn sm ghost" id="bmBtn" title="Bookmark or install StepAway">⭐ Bookmark</button><button class="btn sm" id="topBtn"></button></div>
 </div>
 <main id="app"></main>
@@ -561,7 +561,7 @@ function updateEmp(){
       <div><h1 style="font-size:30px">${esc(S.theme.greet)}, ${esc(firstName(me.name))} ${S.theme.icon}</h1>
         <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">
           <button class="livepill" id="themeBtn" title="Change theme"><i></i>${S.theme.key==="live"?"live":""} ${S.theme.icon} ${esc(S.theme.name)} · 🎨</button>
-          <span class="pill grey mono">ID ${esc(me.id)}</span>${me.dept?`<span class="pill grey">${esc(me.dept)}</span>`:""}
+          <span class="pill grey mono">ID ${esc(me.id)}</span>${me.dept?`<span class="pill grey">${esc(me.dept)}</span>`:""}${me.admin?`<span class="pill grey">🛡️ ${esc(me.admin)}</span>`:""}
           ${act?`<span class="pill warn">● on a break</span>`:`<span class="pill">● at desk</span>`}
           <span class="muted small">signed in ${fmtTime(sess.login_at)} · ${st.online} online</span>
         </div></div>
@@ -850,7 +850,7 @@ function renderAdminLogin(){
   $("#aBtn").onclick=doLogin; ["#aU","#aP"].forEach(s=>$(s).addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); }));
 }
 async function adminSignOut(msg){
-  const t=S.admToken; S.admToken=null; S.me=null; ss.set("sa2_adm_token",null);
+  const t=S.admToken; S.admToken=null; S.me=null; S.scope=null; ss.set("sa2_adm_token",null);
   if(t) rpc("adm_logout",{p_token:t}).catch(()=>{});
   $("#modalRoot").innerHTML=""; go("emp"); if(msg) toast(msg);
 }
@@ -862,7 +862,7 @@ setInterval(()=>{ if(S.view==="admin" && S.admToken && Date.now()-S.admLast>ADMI
    ADMIN — SHELL
    ===================================================================== */
 // 4th element = super admin only
-const ADM_TABS=[["live","📡","Live now"],["sessions","🔐","Sign-outs"],["log","📋","Activity log"],["reports","📊","Reports"],["upload","🗂️","Old files report"],
+const ADM_TABS=[["live","📡","Live now"],["teams","🧭","Teams"],["sessions","🔐","Sign-outs"],["log","📋","Activity log"],["reports","📊","Reports"],["upload","🗂️","Old files report"],
   ["people","👥","Employees"],["lounge","💬","Lounge"],["admins","🛡️","Admins",1],["storage","💾","Storage & backups",1],["settings","⚙️","Settings",1],["account","🔑","My account"]];
 const isSuper=()=>S.me?.role==="super";
 const myTabs=()=>ADM_TABS.filter(t=>!t[3]||isSuper());
@@ -875,8 +875,9 @@ async function renderAdmin(){
   $("#app").innerHTML=`<div class="adm"><nav class="nav" id="admNav"></nav><section id="admBody"><div class="empty">loading…</div></section></div>`;
   try{ await loadOv(); }catch(e){ if($("#admBody")) $("#admBody").innerHTML=`<div class="card empty">${esc(e.message)}</div>`; return; }
   if(!myTabs().some(t=>t[0]===S.admTab)) S.admTab="live";
+  if(!S.scope) S.scope=isSuper()?"all":"mine";
   drawNav(); openTab(S.admTab);
-  S.timers.adm=setInterval(async()=>{ if(document.hidden||modalOpen()) return; try{ await loadOv(); drawNav(); if(S.admTab==="live") tabLive(); if(S.admTab==="sessions") tabSessions(); }catch(e){} },10000);
+  S.timers.adm=setInterval(async()=>{ if(document.hidden||modalOpen()) return; try{ await loadOv(); drawNav(); if(S.admTab==="live") tabLive(); if(S.admTab==="teams") tabTeams(); if(S.admTab==="sessions") tabSessions(); }catch(e){} },10000);
   S.timers.admTick=setInterval(()=>$$("[data-since]").forEach(el=>el.textContent=fmtClock(now()-new Date(el.dataset.since))),1000);
 }
 function drawNav(){
@@ -886,46 +887,96 @@ function drawNav(){
 }
 function openTab(k){
   S.admTab=k; stopLounge(); $$("#admNav button").forEach(b=>b.classList.toggle("on",b.dataset.k===k));
-  ({live:tabLive,sessions:tabSessions,log:tabLog,reports:tabReports,upload:tabUpload,people:tabPeople,lounge:tabLounge,admins:tabAdmins,storage:tabStorage,settings:tabSettings,account:tabAccount})[k]();
+  ({live:tabLive,teams:tabTeams,sessions:tabSessions,log:tabLog,reports:tabReports,upload:tabUpload,people:tabPeople,lounge:tabLounge,admins:tabAdmins,storage:tabStorage,settings:tabSettings,account:tabAccount})[k]();
 }
 const B=()=>$("#admBody");
 const lim=t=>limitOf(t,S.ov?.settings?.limits);
 const admErr=e=>toast(e.message);
 
+/* ---- Teams / scope helpers */
+const admById=id=>(S.ov?.admins||[]).find(a=>a.id===id);
+const admName=id=>{ if(id==null) return "Unassigned"; const a=admById(id); return a?(a.name||a.username):"—"; };
+function inScope(adm){ const sc=S.scope; if(sc==="all") return true; if(sc==="mine") return adm===S.me.id; if(sc==="none") return adm==null; return adm===Number(sc); }
+function scopeName(){ const sc=S.scope; return sc==="all"?"Everyone":sc==="mine"?"My team":sc==="none"?"Unassigned":`Team · ${admName(Number(sc))}`; }
+function scopeSelect(){
+  const ads=(S.ov?.admins||[]).filter(a=>a.id!==S.me.id&&(a.active||a.members));
+  return `<select class="input" id="scopeSel" style="width:auto;min-width:200px">
+    <option value="all" ${S.scope==="all"?"selected":""}>👀 Everyone</option>
+    <option value="mine" ${S.scope==="mine"?"selected":""}>⭐ My team (${(admById(S.me.id)||{}).members||0})</option>
+    ${ads.map(a=>`<option value="${a.id}" ${String(S.scope)===String(a.id)?"selected":""}>${a.role==="super"?"👑":"🛡️"} ${esc(a.name||a.username)}'s team (${a.members})</option>`).join("")}
+    <option value="none" ${S.scope==="none"?"selected":""}>➖ Unassigned (${S.ov?.unassigned||0})</option></select>`;
+}
+function bindScope(redraw){ const el=$("#scopeSel"); if(el) el.onchange=e=>{ S.scope=e.target.value; redraw(); }; }
+const teamCell=adm=>`<span class="pill ${adm==null?"grey":adm===S.me.id?"":"violet"}">${adm==null?"➖":admById(adm)?.role==="super"?"👑":"🛡️"} ${esc(admName(adm))}</span>`;
+function teamStats(adm){
+  const ov=S.ov, sess=ov.sessions.filter(x=>x.adm===adm), act=ov.active.filter(x=>x.adm===adm), td=ov.today.filter(x=>x.a===adm);
+  return {members: adm==null?ov.unassigned:(admById(adm)?.members||0), signed:sess.length, act, over:act.filter(a=>now()-new Date(a.s)>lim(a.t)*60000).length,
+    req:sess.filter(x=>x.req).length, n:td.length, secs:td.reduce((s,x)=>s+x.s,0)};
+}
+
+/* ---- Teams (who falls under which admin, who's out from each team) */
+function tabTeams(){
+  const ov=S.ov;
+  let ids=ov.admins.filter(a=>a.members||(a.id===S.me.id&&a.role!=="super")||(a.active&&a.role!=="super")).map(a=>a.id);
+  ids.sort((a,b)=>(b===S.me.id)-(a===S.me.id));            // my team first
+  if(ov.unassigned||ov.sessions.some(x=>x.adm==null)) ids.push(null);
+  B().innerHTML=`<h1 style="margin-bottom:4px">Teams</h1><p class="muted" style="margin:0 0 18px">Who belongs to which admin, and who's away from each team right now · auto-refreshes</p>
+    <div class="grid2">${ids.map(id=>{ const a=id==null?null:admById(id), t=teamStats(id);
+      return `<div class="card" style="${id===S.me.id?"border-color:rgba(198,255,61,.45)":""}">
+        <div class="between" style="margin-bottom:12px"><div class="row"><div class="av" style="width:40px;height:40px;border-radius:13px;background:var(--card2);display:grid;place-items:center;font-size:20px">${id==null?"➖":a.role==="super"?"👑":"🛡️"}</div>
+          <div><h3>${id==null?"Unassigned":esc(a.name||a.username)}${id===S.me.id?` <span class="pill" style="margin-left:4px">you</span>`:""}</h3>
+          <div class="muted small">${id==null?"not under any admin yet":`${esc(a.username)} · ${a.role==="super"?"super admin":"admin"}${a.online?" · 🟢 online":""}${a.active?"":" · inactive"}`}</div></div></div>
+          <button class="btn sm" data-team="${id==null?"none":id}">Open team →</button></div>
+        <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+          <div class="st"><div class="k">members</div><div class="v">${t.members}</div></div>
+          <div class="st"><div class="k">signed in</div><div class="v">${t.signed}</div></div>
+          <div class="st"><div class="k">away now</div><div class="v" style="color:${t.act.length?"var(--amber)":"inherit"}">${t.act.length}</div></div>
+          <div class="st"><div class="k">over limit</div><div class="v" style="color:${t.over?"var(--danger)":"inherit"}">${t.over}</div></div></div>
+        <div class="muted small" style="margin:10px 0 4px">today: <b style="color:var(--ink)">${t.n}</b> breaks · <b style="color:var(--ink)">${fmtMin(t.secs/60)}</b> away${t.req?` · <span style="color:var(--amber)">${t.req} sign-out request${t.req>1?"s":""}</span>`:""}</div>
+        <div class="mini-list">${t.act.length?t.act.map(x=>{ const o=now()-new Date(x.s)>lim(x.t)*60000; return `<div class="it"><div class="av">${esc(x.av||"🙂")}</div>
+          <div style="flex:1;min-width:0"><b style="font-size:14px">${esc(x.name||x.emp)}</b><div class="muted small">${BTM[x.t].icon} ${esc(BTM[x.t].name)}</div></div>
+          <span class="mono small" style="color:${o?"var(--danger)":"var(--ink2)"}" data-since="${esc(x.s)}">${fmtClock(now()-new Date(x.s))}</span></div>`; }).join("")
+          :`<div class="empty" style="padding:10px 0">everyone's at their desk 💪</div>`}</div></div>`; }).join("")}</div>`;
+  $$("[data-team]").forEach(b=>b.onclick=()=>{ const v=b.dataset.team; S.scope=v==="none"?"none":Number(v)===S.me.id?"mine":v; openTab("live"); });
+}
+
 /* ---- Live */
 function tabLive(){
-  const ov=S.ov, act=ov.active, over=act.filter(a=>now()-new Date(a.s)>lim(a.t)*60000);
-  B().innerHTML=`<h1 style="margin-bottom:4px">Live now</h1><p class="muted" style="margin:0 0 18px">auto-refreshes every 10 seconds</p>
+  const ov=S.ov, act=ov.active.filter(a=>inScope(a.adm)), sess=ov.sessions.filter(x=>inScope(x.adm)), td=ov.today.filter(x=>inScope(x.a));
+  const over=act.filter(a=>now()-new Date(a.s)>lim(a.t)*60000), moods=td.filter(x=>x.m), mood=moods.length?moods.reduce((s,x)=>s+x.m,0)/moods.length:null;
+  B().innerHTML=`<div class="between" style="margin-bottom:18px"><div><h1 style="margin-bottom:4px">Live now</h1><p class="muted" style="margin:0">${esc(scopeName())} · auto-refreshes every 10 seconds</p></div>${scopeSelect()}</div>
     <div class="kpis">
-      <div class="kpi"><div class="k">Signed in</div><div class="v">${ov.sessions.length}</div></div>
+      <div class="kpi"><div class="k">Signed in</div><div class="v">${sess.length}</div></div>
       <div class="kpi"><div class="k">Away right now</div><div class="v">${act.length}</div></div>
       <div class="kpi"><div class="k">Over limit</div><div class="v" style="color:${over.length?"var(--danger)":"inherit"}">${over.length}</div></div>
-      <div class="kpi"><div class="k">Breaks today</div><div class="v">${ov.today.n}</div></div>
-      <div class="kpi"><div class="k">Time away today</div><div class="v">${fmtMin(ov.today.secs/60)}</div></div>
-      <div class="kpi"><div class="k">Avg vibe today</div><div class="v">${ov.today.mood?`${VIBES[Math.round(ov.today.mood)-1][1]} ${Number(ov.today.mood).toFixed(1)}`:"—"}</div></div>
+      <div class="kpi"><div class="k">Breaks today</div><div class="v">${td.length}</div></div>
+      <div class="kpi"><div class="k">Time away today</div><div class="v">${fmtMin(td.reduce((s,x)=>s+x.s,0)/60)}</div></div>
+      <div class="kpi"><div class="k">Avg vibe today</div><div class="v">${mood?`${VIBES[Math.round(mood)-1][1]} ${mood.toFixed(1)}`:"—"}</div></div>
     </div>
     <div class="card"><h2>Currently away from desk</h2>
-    ${act.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Break</th><th>Started</th><th>Elapsed</th><th>Limit</th><th></th></tr></thead><tbody>
-      ${act.map(a=>{const o=now()-new Date(a.s)>lim(a.t)*60000;return `<tr><td>${esc(a.av||"")} <b>${esc(a.name||a.emp)}</b> <span class="muted mono small">${esc(a.emp)}</span></td>
+    ${act.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Team</th><th>Break</th><th>Started</th><th>Elapsed</th><th>Limit</th><th></th></tr></thead><tbody>
+      ${act.map(a=>{const o=now()-new Date(a.s)>lim(a.t)*60000;return `<tr><td>${esc(a.av||"")} <b>${esc(a.name||a.emp)}</b> <span class="muted mono small">${esc(a.emp)}</span></td><td>${teamCell(a.adm)}</td>
       <td>${BTM[a.t].icon} ${esc(BTM[a.t].name)}${a.note?`<div class="muted small">${esc(a.note)}</div>`:""}</td><td>${fmtTime(a.s)}</td>
       <td class="mono" data-since="${esc(a.s)}">${fmtClock(now()-new Date(a.s))}</td><td>${o?`<span class="pill danger">over</span>`:`<span class="pill grey">${lim(a.t)} min</span>`}</td>
-      <td style="text-align:right"><button class="btn sm" data-end="${a.id}">End break</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty">everyone's at their desk 💪</div>`}</div>`;
+      <td style="text-align:right"><button class="btn sm" data-end="${a.id}">End break</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty">everyone in ${esc(scopeName().toLowerCase())} is at their desk 💪</div>`}</div>`;
+  bindScope(tabLive);
   $$("[data-end]").forEach(b=>b.onclick=()=>modal({title:"End this break?",text:"This is recorded in the audit trail.",okText:"End break",
     onOk:async()=>{ await rpc("adm_end_break",{p_token:S.admToken,p_id:Number(b.dataset.end)}); await loadOv(); tabLive(); }}));
 }
 
 /* ---- Sessions */
 function tabSessions(){
-  const ov=S.ov, reqs=ov.sessions.filter(s=>s.req), actBy=Object.fromEntries(ov.active.map(a=>[a.emp,a]));
-  B().innerHTML=`<h1 style="margin-bottom:18px">Sign-outs & sessions</h1>
-    ${reqs.length?`<div class="card" style="margin-bottom:18px"><h2>Pending sign-out requests</h2>${reqs.map(s=>`<div class="req"><div>${esc(s.av)} <b>${esc(s.name)}</b> <span class="muted mono small">${esc(s.id)}</span><div class="muted small">requested at ${fmtTime(s.req)}</div></div>
+  const ov=S.ov, all=ov.sessions.filter(x=>inScope(x.adm)), reqs=all.filter(s=>s.req), actBy=Object.fromEntries(ov.active.map(a=>[a.emp,a]));
+  B().innerHTML=`<div class="between" style="margin-bottom:18px"><div><h1 style="margin-bottom:4px">Sign-outs & sessions</h1><p class="muted" style="margin:0">${esc(scopeName())}</p></div>${scopeSelect()}</div>
+    ${reqs.length?`<div class="card" style="margin-bottom:18px"><h2>Pending sign-out requests</h2>${reqs.map(s=>`<div class="req"><div>${esc(s.av)} <b>${esc(s.name)}</b> <span class="muted mono small">${esc(s.id)}</span> ${teamCell(s.adm)}<div class="muted small">requested at ${fmtTime(s.req)}</div></div>
       <div class="row"><button class="btn sm" data-decline="${esc(s.id)}">Decline</button><button class="btn sm lime" data-approve="${esc(s.id)}">Approve sign-out</button></div></div>`).join("")}</div>`:""}
-    <div class="card"><h2>Active sessions (${ov.sessions.length})</h2>
-    ${ov.sessions.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Signed in</th><th>Status</th><th></th></tr></thead><tbody>
-      ${ov.sessions.map(s=>{const a=actBy[s.id];return `<tr><td>${esc(s.av)} <b>${esc(s.name)}</b> <span class="muted mono small">${esc(s.id)}</span>${s.dept?`<div class="muted small">${esc(s.dept)}</div>`:""}</td>
-        <td>${fmtTime(s.login)} <span class="muted small">${fmtDate(s.login)}</span></td>
+    <div class="card"><h2>Active sessions (${all.length})</h2>
+    ${all.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Team</th><th>Signed in</th><th>Status</th><th></th></tr></thead><tbody>
+      ${all.map(s=>{const a=actBy[s.id];return `<tr><td>${esc(s.av)} <b>${esc(s.name)}</b> <span class="muted mono small">${esc(s.id)}</span>${s.dept?`<div class="muted small">${esc(s.dept)}</div>`:""}</td>
+        <td>${teamCell(s.adm)}</td><td>${fmtTime(s.login)} <span class="muted small">${fmtDate(s.login)}</span></td>
         <td>${a?`<span class="pill warn">${BTM[a.t].icon} ${esc(BTM[a.t].name)}</span>`:`<span class="pill">at desk</span>`} ${s.req?`<span class="pill warn">sign-out requested</span>`:""}</td>
         <td style="text-align:right"><button class="btn sm danger" data-force="${esc(s.id)}">Sign out</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty">no one's signed in</div>`}</div>`;
+  bindScope(tabSessions);
   const signout=async id=>{ await rpc("adm_signout",{p_token:S.admToken,p_emp:id}); await loadOv(); drawNav(); tabSessions(); toast("signed out"); };
   $$("[data-approve]").forEach(b=>b.onclick=()=>signout(b.dataset.approve).catch(admErr));
   $$("[data-decline]").forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_decline",{p_token:S.admToken,p_emp:b.dataset.decline}); await loadOv(); drawNav(); tabSessions(); }catch(e){ admErr(e); } });
@@ -935,7 +986,7 @@ function tabSessions(){
 /* ---- data normalisation shared by log / reports / uploads */
 function normApi(x){
   const s=new Date(x.s), e=x.e?new Date(x.e):null, min=((e?e.getTime():now())-s.getTime())/60000, l=lim(x.t);
-  return {id:x.id, emp:x.emp, name:x.name||"Unknown", dept:x.dept||"", t:x.t, type:BTM[x.t]?.name||"?", s, e, min, lim:l, over:min>l,
+  return {id:x.id, emp:x.emp, name:x.name||"Unknown", dept:x.dept||"", adm:x.adm??null, team:admName(x.adm??null), t:x.t, type:BTM[x.t]?.name||"?", s, e, min, lim:l, over:min>l,
     mood:x.mood||null, voided:x.f===1, flag:x.f, note:x.note||"", vr:x.vr||"", status:x.f===1?"Voided":!e?"In progress":x.f===2?"Ended by admin":min>l?"Over limit":"On time"};
 }
 async function fetchRows(from,to){ return (await rpc("adm_entries",{p_token:S.admToken,p_from:from.toISOString(),p_to:to.toISOString()})).map(normApi); }
@@ -943,14 +994,14 @@ async function fetchRows(from,to){ return (await rpc("adm_entries",{p_token:S.ad
 /* ---- Excel helpers (SheetJS) */
 function needXlsx(){ if(!window.XLSX){ toast("Excel library is still loading — try again in a second"); return false; } return true; }
 function sheetRows(rows){
-  return rows.map(r=>({"Date":ymd(r.s),"Employee ID":r.emp,"Employee Name":r.name,"Department":r.dept,"Break Type":r.type,"Note":r.note,
+  return rows.map(r=>({"Date":ymd(r.s),"Employee ID":r.emp,"Employee Name":r.name,"Department":r.dept,"Team (Admin)":r.team||"","Break Type":r.type,"Note":r.note,
     "Start":r.s,"End":r.e||"","Duration (min)":Math.round(r.min*10)/10,"Limit (min)":r.lim??"","Over Limit":r.over?"Yes":"No",
     "Vibe (1-5)":r.mood??"","Status":r.status,"Void Reason":r.vr}));
 }
 function summaryRows(rows){
   const v=rows.filter(r=>!r.voided), by=(key)=>{ const m={}; v.forEach(r=>{ const k=key(r); (m[k]??={n:0,min:0,over:0,mood:[]}); m[k].n++; m[k].min+=r.min; if(r.over)m[k].over++; if(r.mood)m[k].mood.push(r.mood); }); return m; };
   const fmt=(m,label)=>Object.entries(m).sort((a,b)=>b[1].min-a[1].min).map(([k,x])=>({[label]:k,"Breaks":x.n,"Total (min)":Math.round(x.min),"Avg (min)":Math.round(x.min/x.n*10)/10,"Over limit":x.over,"Avg vibe":x.mood.length?Math.round(x.mood.reduce((a,b)=>a+b,0)/x.mood.length*10)/10:""}));
-  return {types:fmt(by(r=>r.type),"Break Type"), people:fmt(by(r=>`${r.name} (${r.emp})`),"Employee"), depts:fmt(by(r=>r.dept||"—"),"Department")};
+  return {types:fmt(by(r=>r.type),"Break Type"), people:fmt(by(r=>`${r.name} (${r.emp})`),"Employee"), depts:fmt(by(r=>r.dept||"—"),"Department"), teams:fmt(by(r=>r.team||"Unassigned"),"Team (Admin)")};
 }
 function writeBook(sheets, filename){
   const wb=XLSX.utils.book_new();
@@ -961,12 +1012,12 @@ function writeBook(sheets, filename){
   });
   XLSX.writeFile(wb, filename, {compression:true});
 }
-const ACT_W=[11,12,22,16,24,26,17,17,13,10,10,10,15,26];
+const ACT_W=[11,12,22,16,20,24,26,17,17,13,10,10,10,15,26];
 function exportActivity(rows, filename, extraMeta={}){
   if(!needXlsx()) return;
   const sum=summaryRows(rows);
-  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.1"}];
-  writeBook([["Activities",sheetRows(rows),ACT_W],["By Break Type",sum.types,[26,8,12,10,10,9]],["By Employee",sum.people,[32,8,12,10,10,9]],["By Department",sum.depts,[22,8,12,10,10,9]],["Info",meta,[18,40]]], filename);
+  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.2"}];
+  writeBook([["Activities",sheetRows(rows),ACT_W],["By Break Type",sum.types,[26,8,12,10,10,9]],["By Employee",sum.people,[32,8,12,10,10,9]],["By Department",sum.depts,[22,8,12,10,10,9]],["By Team",sum.teams,[24,8,12,10,10,9]],["Info",meta,[18,40]]], filename);
 }
 
 /* ---- Activity log */
@@ -974,6 +1025,7 @@ let logF={from:ymd(new Date()),to:ymd(new Date()),q:"",t:""}, logRows=[];
 async function tabLog(){
   B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Activity log</h1><button class="btn lime" id="xl">⬇️ Export to Excel</button></div>
     <div class="card"><div class="filters">
+      <div class="field"><label>Team</label>${scopeSelect()}</div>
       <div class="field"><label>From</label><input type="date" class="input" id="fF" value="${logF.from}"></div>
       <div class="field"><label>To</label><input type="date" class="input" id="fT" value="${logF.to}"></div>
       <div class="field" style="flex:1"><label>Search employee</label><input class="input" id="fQ" value="${esc(logF.q)}" placeholder="name or ID"></div>
@@ -981,16 +1033,16 @@ async function tabLog(){
     </div><div id="logT"><div class="empty">loading…</div></div></div>`;
   const reload=async()=>{ try{ logRows=await fetchRows(fromYmd(logF.from), addDays(fromYmd(logF.to),1)); drawLog(); }catch(e){ $("#logT").innerHTML=`<div class="empty">${esc(e.message)}</div>`; } };
   $("#fF").onchange=e=>{logF.from=e.target.value;reload();}; $("#fT").onchange=e=>{logF.to=e.target.value;reload();};
-  $("#fQ").oninput=e=>{logF.q=e.target.value;drawLog();}; $("#fY").onchange=e=>{logF.t=e.target.value;drawLog();};
-  $("#xl").onclick=()=>exportActivity(filteredLog(),`stepaway-activity_${logF.from}_to_${logF.to}.xlsx`,{"From":logF.from,"To":logF.to});
+  $("#fQ").oninput=e=>{logF.q=e.target.value;drawLog();}; $("#fY").onchange=e=>{logF.t=e.target.value;drawLog();}; bindScope(drawLog);
+  $("#xl").onclick=()=>exportActivity(filteredLog(),`stepaway-activity_${logF.from}_to_${logF.to}.xlsx`,{"From":logF.from,"To":logF.to,"Team":scopeName()});
   await reload();
 }
-function filteredLog(){ const q=logF.q.toLowerCase(); return logRows.filter(r=>(!logF.t||String(r.t)===String(logF.t))&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q))); }
+function filteredLog(){ const q=logF.q.toLowerCase(); return logRows.filter(r=>inScope(r.adm)&&(!logF.t||String(r.t)===String(logF.t))&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q))); }
 function drawLog(){
   const rows=filteredLog(), shown=rows.slice(0,500);
   $("#logT").innerHTML=rows.length?`<p class="muted small" style="margin:0 0 8px">${rows.length} entr${rows.length===1?"y":"ies"}${rows.length>500?" · showing the latest 500 (export to see all)":""}</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Break</th><th>Start</th><th>End</th><th>Duration</th><th>Vibe</th><th>Status</th><th></th></tr></thead><tbody>
-    ${shown.map(r=>`<tr class="${r.voided?"voided":""}"><td>${fmtDate(r.s)}</td><td><b>${esc(r.name)}</b><div class="muted mono small">${esc(r.emp)}</div></td>
+    <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Team</th><th>Break</th><th>Start</th><th>End</th><th>Duration</th><th>Vibe</th><th>Status</th><th></th></tr></thead><tbody>
+    ${shown.map(r=>`<tr class="${r.voided?"voided":""}"><td>${fmtDate(r.s)}</td><td><b>${esc(r.name)}</b><div class="muted mono small">${esc(r.emp)}</div></td><td>${teamCell(r.adm)}</td>
       <td>${BTM[r.t].icon} ${esc(r.type)}${r.note?`<div class="muted small">${esc(r.note)}</div>`:""}</td><td>${fmtTime(r.s)}</td><td>${r.e?fmtTime(r.e):"—"}</td>
       <td class="mono">${fmtMin(r.min)}</td><td>${r.mood?VIBES[r.mood-1][1]:""}</td>
       <td>${r.voided?`<span class="pill danger" title="${esc(r.vr)}">voided</span>`:!r.e?`<span class="pill warn">in progress</span>`:r.over?`<span class="pill danger">over limit</span>`:`<span class="pill">on time</span>`}${r.flag===2?` <span class="pill grey">admin-ended</span>`:""}</td>
@@ -1003,20 +1055,21 @@ function drawLog(){
 
 /* ---- Report component (live + uploaded) */
 function renderReport(el, all, {title="", exportName="stepaway-report.xlsx", meta={}}={}){
-  const st={dept:"",q:"",t:""};
+  const st={dept:"",q:"",t:"",m:""};
   const depts=[...new Set(all.map(r=>r.dept).filter(Boolean))].sort();
   el.innerHTML=`<div class="card" style="margin-bottom:16px"><div class="filters" style="margin:0">
+      ${(()=>{ const teams=[...new Set(all.map(r=>r.team).filter(Boolean))].sort(); return teams.length>1?`<div class="field"><label>Team</label><select class="input" id="rM"><option value="">All teams</option>${teams.map(t=>`<option>${esc(t)}</option>`).join("")}</select></div>`:""; })()}
       <div class="field"><label>Department</label><select class="input" id="rD"><option value="">All departments</option>${depts.map(d=>`<option>${esc(d)}</option>`).join("")}</select></div>
       <div class="field" style="flex:1"><label>Employee</label><input class="input" id="rQ" placeholder="name or ID"></div>
       <div class="field"><label>Break type</label><select class="input" id="rT"><option value="">All types</option>${[...new Set(all.map(r=>r.type))].sort().map(t=>`<option>${esc(t)}</option>`).join("")}</select></div>
       <button class="btn lime" id="rX">⬇️ Export report (.xlsx)</button></div></div><div id="rBody"></div>`;
   const draw=()=>{
     const q=st.q.toLowerCase();
-    const rows=all.filter(r=>!r.voided&&(!st.dept||r.dept===st.dept)&&(!st.t||r.type===st.t)&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q)));
+    const rows=all.filter(r=>!r.voided&&(!st.m||r.team===st.m)&&(!st.dept||r.dept===st.dept)&&(!st.t||r.type===st.t)&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q)));
     $("#rBody",el).innerHTML=reportHtml(rows);
   };
-  $("#rD",el).onchange=e=>{st.dept=e.target.value;draw();}; $("#rT",el).onchange=e=>{st.t=e.target.value;draw();}; $("#rQ",el).oninput=e=>{st.q=e.target.value;draw();};
-  $("#rX",el).onclick=()=>{ const q=st.q.toLowerCase(); exportActivity(all.filter(r=>(!st.dept||r.dept===st.dept)&&(!st.t||r.type===st.t)&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q))),exportName,meta); };
+  $("#rD",el).onchange=e=>{st.dept=e.target.value;draw();}; if($("#rM",el)) $("#rM",el).onchange=e=>{st.m=e.target.value;draw();}; $("#rT",el).onchange=e=>{st.t=e.target.value;draw();}; $("#rQ",el).oninput=e=>{st.q=e.target.value;draw();};
+  $("#rX",el).onclick=()=>{ const q=st.q.toLowerCase(); exportActivity(all.filter(r=>(!st.m||r.team===st.m)&&(!st.dept||r.dept===st.dept)&&(!st.t||r.type===st.t)&&(!q||r.name.toLowerCase().includes(q)||String(r.emp).toLowerCase().includes(q))),exportName,meta); };
   draw();
 }
 function reportHtml(rows){
@@ -1040,7 +1093,7 @@ function reportHtml(rows){
   const wd=Array(7).fill(0), hr=Array(24).fill(0); rows.forEach(r=>{ wd[r.s.getDay()]+=1; hr[r.s.getHours()]+=1; });
   const wdN=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   // people
-  const byP={}; rows.forEach(r=>{ const p=(byP[r.emp]??={name:r.name,dept:r.dept,n:0,min:0,over:0,mood:[]}); p.n++; p.min+=r.min; if(r.over)p.over++; if(r.mood)p.mood.push(r.mood); });
+  const byP={}; rows.forEach(r=>{ const p=(byP[r.emp]??={name:r.name,dept:r.dept,team:r.team,n:0,min:0,over:0,mood:[]}); p.n++; p.min+=r.min; if(r.over)p.over++; if(r.mood)p.mood.push(r.mood); });
   const pArr=Object.entries(byP).sort((a,b)=>b[1].min-a[1].min);
   const vbars=(vals,labels,tipFn,every=1)=>{ const mx=Math.max(1,...vals); return `<div class="vchart">${vals.map((v,i)=>`<div class="col" data-tip="${esc(tipFn(i,v))}"><i style="height:${(v/mx*100).toFixed(1)}%"></i></div>`).join("")}</div>
     <div class="vlabels">${labels.map((l,i)=>`<span>${i%every===0?esc(l):""}</span>`).join("")}</div>`; };
@@ -1062,19 +1115,23 @@ function reportHtml(rows){
       <div class="card"><h3 style="margin-bottom:6px">Breaks by hour of day</h3><p class="muted small" style="margin:0 0 4px">when breaks start</p>
         ${vbars(hr,hr.map((_,i)=>String(i)),(i,v)=>`<b>${pad(i)}:00–${pad(i)}:59</b><br>${v} breaks`,3)}</div>
     </div>
-    <div class="card"><h3 style="margin-bottom:12px">By employee</h3><div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Breaks</th><th>Total</th><th>Avg</th><th>Over limit</th><th>Avg vibe</th></tr></thead><tbody>
-      ${pArr.slice(0,300).map(([id,p])=>`<tr><td><b>${esc(p.name)}</b> <span class="muted mono small">${esc(id)}</span></td><td>${esc(p.dept)}</td><td>${p.n}</td><td class="mono">${fmtMin(p.min)}</td><td class="mono">${fmtMin(p.min/p.n)}</td>
+    ${(()=>{ const m={}; rows.forEach(r=>{ const k=r.team||"Unassigned"; const x=(m[k]??={ppl:new Set(),n:0,min:0,over:0,mood:[]}); x.ppl.add(r.emp); x.n++; x.min+=r.min; if(r.over)x.over++; if(r.mood)x.mood.push(r.mood); });
+      const arr=Object.entries(m).sort((a,b)=>b[1].min-a[1].min); if(arr.length<2&&!rows.some(r=>r.team)) return "";
+      return `<div class="card" style="margin-bottom:18px"><h3 style="margin-bottom:12px">By team (admin)</h3><div class="tbl-wrap"><table><thead><tr><th>Team</th><th>People</th><th>Breaks</th><th>Total</th><th>Avg</th><th>Over limit</th><th>Avg vibe</th></tr></thead><tbody>
+        ${arr.map(([k,x])=>`<tr><td><b>${esc(k)}</b></td><td>${x.ppl.size}</td><td>${x.n}</td><td class="mono">${fmtMin(x.min)}</td><td class="mono">${fmtMin(x.min/x.n)}</td><td>${x.over?`<span class="pill danger">${x.over}</span>`:"0"}</td><td>${x.mood.length?(x.mood.reduce((a,b)=>a+b,0)/x.mood.length).toFixed(1):"—"}</td></tr>`).join("")}</tbody></table></div></div>`; })()}
+    <div class="card"><h3 style="margin-bottom:12px">By employee</h3><div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Team</th><th>Breaks</th><th>Total</th><th>Avg</th><th>Over limit</th><th>Avg vibe</th></tr></thead><tbody>
+      ${pArr.slice(0,300).map(([id,p])=>`<tr><td><b>${esc(p.name)}</b> <span class="muted mono small">${esc(id)}</span></td><td>${esc(p.dept)}</td><td>${esc(p.team||"")}</td><td>${p.n}</td><td class="mono">${fmtMin(p.min)}</td><td class="mono">${fmtMin(p.min/p.n)}</td>
         <td>${p.over?`<span class="pill danger">${p.over}</span>`:"0"}</td><td>${p.mood.length?(p.mood.reduce((a,b)=>a+b,0)/p.mood.length).toFixed(1):"—"}</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 
 /* ---- Reports (live data) */
 let repRange="7";
 async function tabReports(){
-  B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Reports</h1>
-    <div class="tabs" style="margin:0" id="rr">${[["0","Today"],["7","7 days"],["30","30 days"],["90","90 days"],["365","1 year"]].map(([k,l])=>`<button class="tab ${repRange===k?"on":""}" data-r="${k}">${l}</button>`).join("")}</div></div><div id="rep"><div class="empty">loading…</div></div>`;
-  $$("#rr .tab").forEach(t=>t.onclick=()=>{ repRange=t.dataset.r; tabReports(); });
+  B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Reports</h1><div class="row" style="flex-wrap:wrap">${scopeSelect()}
+    <div class="tabs" style="margin:0" id="rr">${[["0","Today"],["7","7 days"],["30","30 days"],["90","90 days"],["365","1 year"]].map(([k,l])=>`<button class="tab ${repRange===k?"on":""}" data-r="${k}">${l}</button>`).join("")}</div></div></div><div id="rep"><div class="empty">loading…</div></div>`;
+  $$("#rr .tab").forEach(t=>t.onclick=()=>{ repRange=t.dataset.r; tabReports(); }); bindScope(tabReports);
   const from=addDays(midnight(),-Number(repRange)), to=addDays(midnight(),1);
-  try{ const rows=await fetchRows(from,to); renderReport($("#rep"),rows,{exportName:`stepaway-report_${ymd(from)}_to_${ymd(new Date())}.xlsx`,meta:{"From":ymd(from),"To":ymd(new Date())}}); }
+  try{ const rows=(await fetchRows(from,to)).filter(r=>inScope(r.adm)); renderReport($("#rep"),rows,{exportName:`stepaway-report_${ymd(from)}_to_${ymd(new Date())}.xlsx`,meta:{"From":ymd(from),"To":ymd(new Date()),"Team":scopeName()}}); }
   catch(e){ $("#rep").innerHTML=`<div class="card empty">${esc(e.message)}</div>`; }
 }
 
@@ -1123,7 +1180,7 @@ function parseActivityBook(wb){
     const type=String(pick(o,["break type","type"])).trim()||"Unknown";
     const status=String(pick(o,["status"])).trim(), voided=/void/i.test(status)||/^yes$/i.test(String(pick(o,["voided"])).trim());
     const overV=String(pick(o,["over limit"])).trim(); const mood=Number(pick(o,["vibe (1-5)","vibe","mood"]))||null;
-    rows.push({emp,name:String(pick(o,["employee name","name"])).trim()||emp,dept:String(pick(o,["department","dept"])).trim(),t:(BT.find(b=>b.name===type)||{c:0}).c,type,
+    rows.push({emp,name:String(pick(o,["employee name","name"])).trim()||emp,dept:String(pick(o,["department","dept"])).trim(),team:String(pick(o,["team (admin)","team","admin"])).trim(),t:(BT.find(b=>b.name===type)||{c:0}).c,type,
       s,e,min,lim:Number(pick(o,["limit (min)"]))||"",over:/^yes$/i.test(overV)||/over/i.test(status),mood:mood>=1&&mood<=5?mood:null,voided,note:String(pick(o,["note"])),vr:String(pick(o,["void reason"])),status:status||(voided?"Voided":"")});
   });
   return {rows,skipped};
@@ -1141,44 +1198,49 @@ async function drawUpload(){
 /* ---- Employees */
 async function tabPeople(){
   B().innerHTML=`<div class="between" style="margin-bottom:16px"><h1>Employees</h1><button class="btn" id="tpl">⬇️ Import template</button></div>
-    <div class="grid2" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)">
-      <div class="card"><div class="between" style="margin-bottom:10px"><h2 style="margin:0" id="pCount">Directory</h2><input class="input" id="pQ" placeholder="search" style="max-width:200px"></div><div id="pT"><div class="empty">loading…</div></div></div>
+    <div class="grid2" style="grid-template-columns:minmax(0,1fr) 300px">
+      <div class="card"><div class="between" style="margin-bottom:10px"><h2 style="margin:0" id="pCount">Directory</h2><div class="row">${scopeSelect()}<input class="input" id="pQ" placeholder="search" style="max-width:180px"></div></div><div id="pT"><div class="empty">loading…</div></div></div>
       <div class="side">
         <div class="card"><h2>Add employee</h2>
           <div class="field"><label>Employee ID</label><input class="input mono" id="nId" maxlength="20"></div>
           <div class="field"><label>Full name</label><input class="input" id="nName" maxlength="60"></div>
           <div class="field"><label>Department</label><input class="input" id="nDept" maxlength="40" list="deptList"><datalist id="deptList">${(S.ov.depts||[]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
+          ${isSuper()?`<div class="field"><label>Team (admin)</label><select class="input" id="nAdm"><option value="">➖ Unassigned</option>${S.ov.admins.filter(a=>a.active).map(a=>`<option value="${a.id}">${a.role==="super"?"👑":"🛡️"} ${esc(a.name||a.username)}</option>`).join("")}</select></div>`
+            :`<p class="muted small" style="margin:0 0 10px">New employees join <b>your team</b>.</p>`}
           <div class="err" id="nErr"></div><button class="btn lime" id="nAdd" style="width:100%">Add employee</button></div>
-        <div class="card"><h2>Bulk import</h2><p class="muted small" style="margin:0 0 10px">Upload an Excel/CSV with columns <b>Employee ID, Name, Department</b> — or paste lines like <span class="mono">1002, Priya Sharma, Support</span>.</p>
+        <div class="card"><h2>Bulk import</h2><p class="muted small" style="margin:0 0 10px">Upload an Excel/CSV with columns <b>Employee ID, Name, Department</b>${isSuper()?", <b>Admin</b> (admin username, optional)":""} — or paste lines like <span class="mono">1002, Priya Sharma, Support${isSuper()?", neha.g":""}</span>.${isSuper()?"":" Imported employees join your team."}</p>
           <input type="file" id="bFile" accept=".xlsx,.xls,.csv" class="input" style="margin-bottom:10px">
           <textarea class="input" id="bTxt" rows="4" placeholder="1002, Priya Sharma, Support"></textarea>
           <button class="btn" id="bGo" style="width:100%;margin-top:10px">Import</button></div>
       </div></div>`;
   let list=[];
-  const draw=()=>{ const q=$("#pQ").value.toLowerCase(); const rows=list.filter(e=>!q||e.name.toLowerCase().includes(q)||e.id.toLowerCase().includes(q)||e.dept.toLowerCase().includes(q));
-    $("#pCount").textContent=`Directory (${list.filter(e=>e.active).length} active)`;
-    $("#pT").innerHTML=rows.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Status</th><th>⚡ PB</th><th></th></tr></thead><tbody>
-      ${rows.map(e=>`<tr style="${e.active?"":"opacity:.5"}"><td>${esc(e.av)} <b>${esc(e.name)}</b> <span class="muted mono small">${esc(e.id)}</span></td><td>${esc(e.dept)}</td>
-        <td>${!e.active?`<span class="pill grey">inactive</span>`:e.online?`<span class="pill">signed in</span>`:`<span class="pill grey">offline</span>`}</td><td class="mono small">${e.best?e.best+" ms":"—"}</td>
+  const teamOpts=adm=>`<option value="" ${adm==null?"selected":""}>➖ Unassigned</option>${S.ov.admins.filter(a=>a.active||a.id===adm).map(a=>`<option value="${a.id}" ${a.id===adm?"selected":""}>${a.role==="super"?"👑":"🛡️"} ${esc(a.name||a.username)}</option>`).join("")}`;
+  const draw=()=>{ const q=$("#pQ").value.toLowerCase(); const rows=list.filter(e=>inScope(e.adm)&&(!q||e.name.toLowerCase().includes(q)||e.id.toLowerCase().includes(q)||e.dept.toLowerCase().includes(q)));
+    $("#pCount").textContent=`${scopeName()} (${rows.filter(e=>e.active).length} active)`;
+    $("#pT").innerHTML=rows.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Team</th><th>Status</th><th></th></tr></thead><tbody>
+      ${rows.map(e=>`<tr style="${e.active?"":"opacity:.5"}"><td style="min-width:150px">${esc(e.av)} <b>${esc(e.name)}</b> <span class="muted mono small">${esc(e.id)}</span></td><td>${esc(e.dept)}</td>
+        <td>${isSuper()?`<select class="input" data-assign="${esc(e.id)}" style="padding:6px 8px;font-size:12.5px;width:auto">${teamOpts(e.adm)}</select>`:teamCell(e.adm)}</td>
+        <td>${!e.active?`<span class="pill grey">inactive</span>`:e.online?`<span class="pill">signed in</span>`:`<span class="pill grey">offline</span>`}</td>
         <td style="text-align:right">${e.active?`<button class="btn sm" data-off="${esc(e.id)}">Deactivate</button>`:`<button class="btn sm" data-on="${esc(e.id)}">Reactivate</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">no employees found</div>`;
     $$("[data-off]").forEach(b=>b.onclick=()=>modal({title:"Deactivate employee?",text:"They won't be able to sign in. Past records are kept.",okText:"Deactivate",okClass:"danger",onOk:async()=>{ await rpc("adm_emp_active",{p_token:S.admToken,p_id:b.dataset.off,p_active:false}); await reload(); }}));
-    $$("[data-on]").forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_emp_active",{p_token:S.admToken,p_id:b.dataset.on,p_active:true}); await reload(); }catch(e){ admErr(e); } }); };
+    $$("[data-on]").forEach(b=>b.onclick=async()=>{ try{ await rpc("adm_emp_active",{p_token:S.admToken,p_id:b.dataset.on,p_active:true}); await reload(); }catch(e){ admErr(e); } });
+    $$("[data-assign]").forEach(sel=>sel.onchange=async()=>{ const v=sel.value; try{ await rpc("adm_emp_assign",{p_token:S.admToken,p_ids:[sel.dataset.assign],p_admin_id:v?Number(v):null}); await loadOv(); await reload(); toast(`moved to ${admName(v?Number(v):null)}`); }catch(e){ admErr(e); draw(); } }); };
   const reload=async()=>{ list=await rpc("adm_employees",{p_token:S.admToken}); draw(); };
-  $("#pQ").oninput=draw;
+  $("#pQ").oninput=draw; bindScope(draw);
   const save=async rows=>{ const n=await rpc("adm_emp_save",{p_token:S.admToken,p_rows:rows}); await reload(); loadOv().catch(()=>{}); return n; };
   $("#nAdd").onclick=async()=>{ const id=$("#nId").value.trim(), name=$("#nName").value.trim(); if(!id||!name) return $("#nErr").textContent="ID and name are required.";
     if(list.some(e=>e.id===id)) return $("#nErr").textContent=`ID ${id} already exists.`;
-    try{ await save([{id,name,dept:$("#nDept").value.trim()}]); ["#nId","#nName","#nDept"].forEach(s=>$(s).value=""); $("#nErr").textContent=""; toast("employee added 🎉"); }catch(e){ $("#nErr").textContent=e.message; } };
+    try{ await save([{id,name,dept:$("#nDept").value.trim(),...($("#nAdm")&&$("#nAdm").value?{admin_id:Number($("#nAdm").value)}:{})}]); ["#nId","#nName","#nDept"].forEach(s=>$(s).value=""); $("#nErr").textContent=""; toast("employee added 🎉"); }catch(e){ $("#nErr").textContent=e.message; } };
   $("#bGo").onclick=async()=>{
     let rows=[];
     const f=$("#bFile").files[0];
     if(f){ if(!needXlsx()) return; const wb=XLSX.read(await f.arrayBuffer()); const raw=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       const pick=(o,ns)=>{ for(const k of Object.keys(o)) if(ns.includes(k.trim().toLowerCase())) return String(o[k]).trim(); return ""; };
-      rows=raw.map(o=>({id:pick(o,["employee id","id","emp id"]),name:pick(o,["name","employee name","full name"]),dept:pick(o,["department","dept"])})); }
-    $("#bTxt").value.split("\n").forEach(l=>{ if(!l.trim()) return; const [id,name,dept]=l.split(",").map(x=>(x||"").trim()); rows.push({id,name,dept}); });
+      rows=raw.map(o=>({id:pick(o,["employee id","id","emp id"]),name:pick(o,["name","employee name","full name"]),dept:pick(o,["department","dept"]),admin:pick(o,["admin","admin username","team","team (admin)"])})); }
+    $("#bTxt").value.split("\n").forEach(l=>{ if(!l.trim()) return; const [id,name,dept,admin]=l.split(",").map(x=>(x||"").trim()); rows.push({id,name,dept,admin}); });
     rows=rows.filter(r=>r.id&&r.name); if(!rows.length) return toast("nothing to import — check the columns");
     try{ const n=await save(rows); toast(`imported ${n} employee(s)`); $("#bTxt").value=""; $("#bFile").value=""; }catch(e){ admErr(e); } };
-  $("#tpl").onclick=()=>{ if(needXlsx()) writeBook([["Employees",[{"Employee ID":"1002","Name":"Priya Sharma","Department":"Support"},{"Employee ID":"1003","Name":"Rahul Verma","Department":"Sales"}],[14,24,18]]],"stepaway-employee-template.xlsx"); };
+  $("#tpl").onclick=()=>{ if(needXlsx()) writeBook([["Employees",[{"Employee ID":"1002","Name":"Priya Sharma","Department":"Support","Admin":isSuper()?"neha.g":""},{"Employee ID":"1003","Name":"Rahul Verma","Department":"Sales","Admin":""}],[14,24,18,16]]],"stepaway-employee-template.xlsx"); };
   try{ await reload(); }catch(e){ $("#pT").innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
 }
 
@@ -1215,7 +1277,7 @@ async function tabStorage(){
       writeBook([["Activities",sheetRows(rows),ACT_W],
         ["Employees",emps.map(e=>({"Employee ID":e.id,"Name":e.name,"Department":e.dept,"Avatar":e.av,"Active":e.active?"Yes":"No","Reaction PB (ms)":e.best??""})),[14,24,18,8,8,16]],
         ["By Employee",sum.people,[32,8,12,10,10,9]],["Audit",aud.map(a=>({"When":new Date(a.at),"Actor":a.actor,"Action":a.action})),[18,14,70]],
-        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.1"}],[16,30]]],
+        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.2"}],[16,30]]],
         `stepaway-backup_${ymd(new Date())}.xlsx`);
       toast("backup downloaded ✅"); }catch(e){ admErr(e); }
     b.disabled=false; b.textContent="Download full backup (.xlsx)"; };
