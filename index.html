@@ -269,7 +269,7 @@ tr.voided td{opacity:.42;text-decoration:line-through} tr.voided td:last-child{o
 </head>
 <body>
 <div class="top">
-  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.3</span></div>
+  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.4</span></div>
   <div class="right"><span class="clock" id="clock"></span><span class="rolechip" id="who"></span><button class="btn sm ghost" id="bmBtn" title="Bookmark or install StepAway">⭐ Bookmark</button><button class="btn sm" id="topBtn"></button></div>
 </div>
 <main id="app"></main>
@@ -1036,7 +1036,7 @@ const ACT_W=[11,12,22,16,20,24,26,17,17,13,10,10,10,15,26];
 function exportActivity(rows, filename, extraMeta={}){
   if(!needXlsx()) return;
   const sum=summaryRows(rows);
-  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.3"}];
+  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.4"}];
   writeBook([["Activities",sheetRows(rows),ACT_W],["By Break Type",sum.types,[26,8,12,10,10,9]],["By Employee",sum.people,[32,8,12,10,10,9]],["By Department",sum.depts,[22,8,12,10,10,9]],["By Team",sum.teams,[24,8,12,10,10,9]],["Info",meta,[18,40]]], filename);
 }
 
@@ -1225,10 +1225,10 @@ async function tabPeople(){
           <div class="field"><label>Employee ID</label><input class="input mono" id="nId" maxlength="20"></div>
           <div class="field"><label>Full name</label><input class="input" id="nName" maxlength="60"></div>
           <div class="field"><label>Department</label><input class="input" id="nDept" maxlength="40" list="deptList"><datalist id="deptList">${(S.ov.depts||[]).map(d=>`<option value="${esc(d)}">`).join("")}</datalist></div>
-          ${isSuper()?`<div class="field"><label>Team (admin)</label><select class="input" id="nAdm"><option value="">➖ Unassigned</option>${S.ov.admins.filter(a=>a.active).map(a=>`<option value="${a.id}">${a.role==="super"?"👑":"🛡️"} ${esc(a.name||a.username)}</option>`).join("")}</select></div>`
+          ${isSuper()?`<div class="field"><label>Team (admin)</label><select class="input" id="nAdm"><option value="${S.me.id}">⭐ My team (default)</option>${S.ov.admins.filter(a=>a.active&&a.id!==S.me.id).map(a=>`<option value="${a.id}">${a.role==="super"?"👑":"🛡️"} ${esc(a.name||a.username)}</option>`).join("")}<option value="none">➖ Unassigned</option></select></div>`
             :`<p class="muted small" style="margin:0 0 10px">New employees join <b>your team</b>.</p>`}
           <div class="err" id="nErr"></div><button class="btn lime" id="nAdd" style="width:100%">Add employee</button></div>
-        <div class="card"><h2>Bulk import</h2><p class="muted small" style="margin:0 0 10px">Upload an Excel/CSV with columns <b>Employee ID, Name, Department</b>${isSuper()?", <b>Admin</b> (admin username, optional)":""} — or paste lines like <span class="mono">1002, Priya Sharma, Support${isSuper()?", neha.g":""}</span>.${isSuper()?"":" Imported employees join your team."}</p>
+        <div class="card"><h2>Bulk import</h2><p class="muted small" style="margin:0 0 10px">Upload an Excel/CSV with columns <b>Employee ID, Name, Department</b>${isSuper()?", <b>Admin</b> (optional: an admin's username, or <span class=\"mono\">none</span>; blank = your team)":""} — or paste lines like <span class="mono">1002, Priya Sharma, Support${isSuper()?", neha.g":""}</span>.${isSuper()?"":" Imported employees join your team."}</p>
           <input type="file" id="bFile" accept=".xlsx,.xls,.csv" class="input" style="margin-bottom:10px">
           <textarea class="input" id="bTxt" rows="4" placeholder="1002, Priya Sharma, Support"></textarea>
           <button class="btn" id="bGo" style="width:100%;margin-top:10px">Import</button></div>
@@ -1237,9 +1237,10 @@ async function tabPeople(){
   const teamOpts=adm=>`<option value="" ${adm==null?"selected":""}>➖ Unassigned</option>${S.ov.admins.filter(a=>a.active||a.id===adm).map(a=>`<option value="${a.id}" ${a.id===adm?"selected":""}>${a.role==="super"?"👑":"🛡️"} ${esc(a.name||a.username)}</option>`).join("")}`;
   const draw=()=>{ const q=$("#pQ").value.toLowerCase(); const rows=list.filter(e=>inScope(e.adm)&&(!q||e.name.toLowerCase().includes(q)||e.id.toLowerCase().includes(q)||e.dept.toLowerCase().includes(q)));
     $("#pCount").textContent=`${scopeName()} (${rows.filter(e=>e.active).length} active)`;
-    $("#pT").innerHTML=rows.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Team</th><th>Status</th><th></th></tr></thead><tbody>
+    $("#pT").innerHTML=rows.length?`<div class="tbl-wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Team · added by</th><th>Status</th><th></th></tr></thead><tbody>
       ${rows.map(e=>`<tr style="${e.active?"":"opacity:.5"}"><td style="min-width:150px">${esc(e.av)} <b>${esc(e.name)}</b> <span class="muted mono small">${esc(e.id)}</span></td><td>${esc(e.dept)}</td>
-        <td>${isSuper()?`<select class="input" data-assign="${esc(e.id)}" style="padding:6px 8px;font-size:12.5px;width:auto">${teamOpts(e.adm)}</select>`:teamCell(e.adm)}</td>
+        <td>${isSuper()?`<select class="input" data-assign="${esc(e.id)}" style="padding:6px 8px;font-size:12.5px;width:auto">${teamOpts(e.adm)}</select>`:teamCell(e.adm)}
+          <div class="muted small" style="margin-top:3px">${e.by?`added by ${esc(admName(e.by))}${e.at?` · ${fmtDate(e.at)}`:""}`:"added by —"}</div></td>
         <td>${!e.active?`<span class="pill grey">inactive</span>`:e.online?`<span class="pill">signed in</span>`:`<span class="pill grey">offline</span>`}</td>
         <td style="text-align:right">${e.active?`<button class="btn sm" data-off="${esc(e.id)}">Deactivate</button>`:`<button class="btn sm" data-on="${esc(e.id)}">Reactivate</button>`}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">no employees found</div>`;
     $$("[data-off]").forEach(b=>b.onclick=()=>modal({title:"Deactivate employee?",text:"They won't be able to sign in. Past records are kept.",okText:"Deactivate",okClass:"danger",onOk:async()=>{ await rpc("adm_emp_active",{p_token:S.admToken,p_id:b.dataset.off,p_active:false}); await reload(); }}));
@@ -1250,7 +1251,7 @@ async function tabPeople(){
   const save=async rows=>{ const n=await rpc("adm_emp_save",{p_token:S.admToken,p_rows:rows}); await reload(); loadOv().catch(()=>{}); return n; };
   $("#nAdd").onclick=async()=>{ const id=$("#nId").value.trim(), name=$("#nName").value.trim(); if(!id||!name) return $("#nErr").textContent="ID and name are required.";
     if(list.some(e=>e.id===id)) return $("#nErr").textContent=`ID ${id} already exists.`;
-    try{ await save([{id,name,dept:$("#nDept").value.trim(),...($("#nAdm")&&$("#nAdm").value?{admin_id:Number($("#nAdm").value)}:{})}]); ["#nId","#nName","#nDept"].forEach(s=>$(s).value=""); $("#nErr").textContent=""; toast("employee added 🎉"); }catch(e){ $("#nErr").textContent=e.message; } };
+    try{ await save([{id,name,dept:$("#nDept").value.trim(),...($("#nAdm")?{admin_id:$("#nAdm").value==="none"?"none":Number($("#nAdm").value)}:{})}]); ["#nId","#nName","#nDept"].forEach(s=>$(s).value=""); $("#nErr").textContent=""; toast("employee added 🎉"); }catch(e){ $("#nErr").textContent=e.message; } };
   $("#bGo").onclick=async()=>{
     let rows=[];
     const f=$("#bFile").files[0];
@@ -1297,7 +1298,7 @@ async function tabStorage(){
       writeBook([["Activities",sheetRows(rows),ACT_W],
         ["Employees",emps.map(e=>({"Employee ID":e.id,"Name":e.name,"Department":e.dept,"Avatar":e.av,"Active":e.active?"Yes":"No","Reaction PB (ms)":e.best??""})),[14,24,18,8,8,16]],
         ["By Employee",sum.people,[32,8,12,10,10,9]],["Audit",aud.map(a=>({"When":new Date(a.at),"Actor":a.actor,"Action":a.action})),[18,14,70]],
-        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.3"}],[16,30]]],
+        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.4"}],[16,30]]],
         `stepaway-backup_${ymd(new Date())}.xlsx`);
       toast("backup downloaded ✅"); }catch(e){ admErr(e); }
     b.disabled=false; b.textContent="Download full backup (.xlsx)"; };
