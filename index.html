@@ -54,6 +54,14 @@ body.calm #bg .blob{opacity:.13}
 .howto{background:var(--card2);border-radius:14px;padding:12px 14px;font-size:13.5px;line-height:1.55;color:var(--ink2);margin-top:10px}
 .kbd{font-family:var(--mono);font-size:12px;background:#000;border:1px solid var(--line2);border-bottom-width:3px;border-radius:7px;padding:1px 7px}
 .rolechip{font-size:12px;font-weight:700;color:var(--ink2)}
+.pwwrap{position:relative}
+.pwwrap .input{padding-right:46px}
+.pwwrap .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:17px;padding:6px;opacity:.7}
+.pwwrap .eye:hover{opacity:1}
+.caps{color:var(--amber);font-size:12px;font-weight:600;margin-top:4px;display:none}
+.caps.on{display:block}
+.info{background:rgba(61,224,255,.08);border:1px solid rgba(61,224,255,.3);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:13.5px;margin-bottom:14px}
+.vh{position:absolute!important;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden}
 button{font-family:inherit;cursor:pointer;color:inherit}
 input,select,textarea{font-family:inherit;font-size:15px;color:var(--ink)}
 a{color:var(--cyan)}
@@ -261,7 +269,7 @@ tr.voided td{opacity:.42;text-decoration:line-through} tr.voided td:last-child{o
 </head>
 <body>
 <div class="top">
-  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.2</span></div>
+  <div class="brand">🌿 <span class="grad">StepAway</span> <span class="v">v2.3</span></div>
   <div class="right"><span class="clock" id="clock"></span><span class="rolechip" id="who"></span><button class="btn sm ghost" id="bmBtn" title="Bookmark or install StepAway">⭐ Bookmark</button><button class="btn sm" id="topBtn"></button></div>
 </div>
 <main id="app"></main>
@@ -417,6 +425,12 @@ function modal({title, text="", body="", okText="Confirm", okClass="lime", onOk,
   return {root, close};
 }
 const modalOpen = ()=>!!$("#modalRoot .overlay");
+
+/* password fields: show/hide eye + Caps Lock warning */
+const pwInput=(id,ac,ph="")=>`<div class="pwwrap"><input class="input" type="password" id="${id}" autocomplete="${ac}" placeholder="${ph}" data-pw><button type="button" class="eye" tabindex="-1" title="Show / hide password">👁</button></div><div class="caps">⇪ Caps Lock is on</div>`;
+document.addEventListener("click",e=>{ const b=e.target.closest(".pwwrap .eye"); if(!b) return; const i=b.previousElementSibling; i.type=i.type==="password"?"text":"password"; b.textContent=i.type==="password"?"👁":"🙈"; i.focus(); });
+["keydown","keyup"].forEach(ev=>document.addEventListener(ev,e=>{ const i=e.target; if(!i.matches||!i.matches("[data-pw]")||!e.getModifierState) return; const c=i.closest(".pwwrap").nextElementSibling; if(c&&c.classList.contains("caps")) c.classList.toggle("on",e.getModifierState("CapsLock")); }));
+async function savePwToBrowser(username,password){ try{ if(window.PasswordCredential&&navigator.credentials) await navigator.credentials.store(new PasswordCredential({id:username,password,name:"StepAway admin"})); }catch(e){} }
 
 /* hover tooltip for chart marks */
 document.addEventListener("mousemove",e=>{
@@ -680,7 +694,7 @@ function approveOnDevice(){
   const me=S.emp.me;
   modal({title:"Admin approval",text:`An admin must sign in to approve sign-out for <b>${esc(me.name)}</b> (${esc(me.id)}).`,
     body:`<div class="field"><label>Admin username</label><input class="input" id="au" autocomplete="off"></div>
-          <div class="field"><label>Password</label><input class="input" id="ap" type="password" autocomplete="off"></div>`,
+          <div class="field"><label>Password</label>${pwInput("ap","off")}</div>`,
     okText:"Approve sign-out",
     onOk:async root=>{
       const r=await rpc("adm_login",{p_user:$("#au",root).value,p_pass:$("#ap",root).value});
@@ -833,30 +847,36 @@ function mountLounge(el,{token,channels,admin}){
 function renderAdminLogin(){
   $("#app").innerHTML=`<div style="min-height:calc(100vh - 160px);display:grid;place-items:center"><div class="card login-card" style="width:100%;max-width:430px">
     <div style="font-size:40px">🔐</div><h2 style="margin:6px 0 4px">Admin sign-in</h2><p class="muted" style="margin:0 0 18px">authorised admins only</p>
-    <div class="field"><label>Username</label><input class="input" id="aU" autocomplete="username"></div>
-    <div class="field"><label>Password</label><input class="input" id="aP" type="password" autocomplete="current-password"></div>
+    ${S.loginNote?`<div class="info">${esc(S.loginNote)}</div>`:""}
+    <form id="aForm" autocomplete="on" onsubmit="return false">
+    <div class="field"><label>Username</label><input class="input" id="aU" name="username" autocomplete="username" value="${esc(S.lastAdminUser||"")}"></div>
+    <div class="field"><label>Password</label>${pwInput("aP","current-password")}</div>
+    </form>
+    <p class="muted small" style="margin:-4px 0 6px">Changed your password? If your browser fills in an old one, clear it and type the new password — use 👁 to check.</p>
     <div class="err" id="aErr"></div>
     <button class="btn violet" id="aBtn">Sign in to admin console</button>
     <p class="muted small" style="margin:14px 0 0">The console locks itself after ${ADMIN_IDLE_MIN} minutes of inactivity.</p>
   </div></div>`;
-  $("#aU").focus();
+  S.loginNote=null;
+  (S.lastAdminUser?$("#aP"):$("#aU")).focus();
   const doLogin=async()=>{
     const u=$("#aU").value, p=$("#aP").value; if(!u||!p) return $("#aErr").textContent="Enter both username and password.";
     $("#aBtn").disabled=true;
     try{ const r=await rpc("adm_login",{p_user:u,p_pass:p}); if(!r.ok){ $("#aErr").textContent=r.msg; $("#aP").value=""; $("#aBtn").disabled=false; return; }
-      S.admToken=r.token; ss.set("sa2_adm_token",r.token); S.me=r.me; S.admLast=Date.now(); go("admin"); }
+      S.admToken=r.token; ss.set("sa2_adm_token",r.token); S.me=r.me; S.lastAdminUser=r.me.username; S.admLast=Date.now(); go("admin"); }
     catch(e){ $("#aErr").textContent=e.message; $("#aBtn").disabled=false; }
   };
   $("#aBtn").onclick=doLogin; ["#aU","#aP"].forEach(s=>$(s).addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); }));
 }
-async function adminSignOut(msg){
-  const t=S.admToken; S.admToken=null; S.me=null; S.scope=null; ss.set("sa2_adm_token",null);
+async function adminSignOut(msg, toLogin=false){
+  const t=S.admToken; if(S.me) S.lastAdminUser=S.me.username; S.admToken=null; S.me=null; S.scope=null; ss.set("sa2_adm_token",null);
   if(t) rpc("adm_logout",{p_token:t}).catch(()=>{});
-  $("#modalRoot").innerHTML=""; go("emp"); if(msg) toast(msg);
+  $("#modalRoot").innerHTML="";
+  if(toLogin){ S.loginNote=msg; go("adminLogin"); } else { go("emp"); if(msg) toast(msg); }
 }
-function onAdminExpired(){ if(S.view==="admin"){ S.admToken=null; S.me=null; ss.set("sa2_adm_token",null); go("adminLogin"); toast("Admin session expired — please sign in again"); } }
+function onAdminExpired(){ if(S.view==="admin"){ if(S.me) S.lastAdminUser=S.me.username; S.admToken=null; S.me=null; ss.set("sa2_adm_token",null); S.loginNote="Your admin session expired — please sign in again."; go("adminLogin"); } }
 ["click","keydown","mousemove","touchstart"].forEach(ev=>document.addEventListener(ev,()=>{ S.admLast=Date.now(); },{passive:true}));
-setInterval(()=>{ if(S.view==="admin" && S.admToken && Date.now()-S.admLast>ADMIN_IDLE_MIN*60000) adminSignOut("Admin console locked due to inactivity"); },15000);
+setInterval(()=>{ if(S.view==="admin" && S.admToken && Date.now()-S.admLast>ADMIN_IDLE_MIN*60000) adminSignOut(`🔒 Locked after ${ADMIN_IDLE_MIN} minutes of inactivity — sign in again to continue.`, true); },15000);
 
 /* =====================================================================
    ADMIN — SHELL
@@ -1016,7 +1036,7 @@ const ACT_W=[11,12,22,16,20,24,26,17,17,13,10,10,10,15,26];
 function exportActivity(rows, filename, extraMeta={}){
   if(!needXlsx()) return;
   const sum=summaryRows(rows);
-  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.2"}];
+  const meta=[{"Field":"Exported at","Value":new Date().toLocaleString()},{"Field":"Rows","Value":rows.length},...Object.entries(extraMeta).map(([k,v])=>({"Field":k,"Value":v})),{"Field":"App","Value":"StepAway v2.3"}];
   writeBook([["Activities",sheetRows(rows),ACT_W],["By Break Type",sum.types,[26,8,12,10,10,9]],["By Employee",sum.people,[32,8,12,10,10,9]],["By Department",sum.depts,[22,8,12,10,10,9]],["By Team",sum.teams,[24,8,12,10,10,9]],["Info",meta,[18,40]]], filename);
 }
 
@@ -1277,7 +1297,7 @@ async function tabStorage(){
       writeBook([["Activities",sheetRows(rows),ACT_W],
         ["Employees",emps.map(e=>({"Employee ID":e.id,"Name":e.name,"Department":e.dept,"Avatar":e.av,"Active":e.active?"Yes":"No","Reaction PB (ms)":e.best??""})),[14,24,18,8,8,16]],
         ["By Employee",sum.people,[32,8,12,10,10,9]],["Audit",aud.map(a=>({"When":new Date(a.at),"Actor":a.actor,"Action":a.action})),[18,14,70]],
-        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.2"}],[16,30]]],
+        ["Info",[{"Field":"Backup taken","Value":new Date().toLocaleString()},{"Field":"Activity rows","Value":rows.length},{"Field":"App","Value":"StepAway v2.3"}],[16,30]]],
         `stepaway-backup_${ymd(new Date())}.xlsx`);
       toast("backup downloaded ✅"); }catch(e){ admErr(e); }
     b.disabled=false; b.textContent="Download full backup (.xlsx)"; };
@@ -1319,9 +1339,10 @@ function showWho(){ if(S.me) $("#who").textContent=`${isSuper()?"👑 Super admi
 
 /* ---- Password form (shared by forced change + My account) */
 function pwFormHtml(firstTime){
-  return `<div class="field"><label>${firstTime?"Current (temporary) password":"Current password"}</label><input class="input" type="password" id="pwO" autocomplete="current-password"></div>
-    <div class="field"><label>New password</label><input class="input" type="password" id="pwN" autocomplete="new-password"></div>
-    <div class="field"><label>Confirm new password</label><input class="input" type="password" id="pwN2" autocomplete="new-password"></div>
+  return `<form autocomplete="on" onsubmit="return false"><input class="vh" type="text" name="username" autocomplete="username" value="${esc(S.me?.username||"")}" readonly tabindex="-1" aria-hidden="true">
+    <div class="field"><label>${firstTime?"Current (temporary) password":"Current password"}</label>${pwInput("pwO","current-password")}</div>
+    <div class="field"><label>New password</label>${pwInput("pwN","new-password")}</div>
+    <div class="field"><label>Confirm new password</label>${pwInput("pwN2","new-password")}</div></form>
     <p class="muted small" style="margin:0 0 8px">At least 8 characters with a letter, a number and a symbol.</p>
     <div class="err" id="pwErr"></div>`;
 }
@@ -1331,7 +1352,7 @@ async function submitPw(){
   if(n!==$("#pwN2").value) return err("New passwords don't match.");
   const r=await rpc("adm_change_password",{p_token:S.admToken,p_old:o,p_new:n});
   if(!r.ok) return err(r.msg);
-  S.me.must_change=false; return true;
+  S.me.must_change=false; savePwToBrowser(S.me.username,n); return true;
 }
 function renderForcePw(){
   showWho();
