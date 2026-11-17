@@ -11,12 +11,12 @@
 
 <!-- ================================================================
      CONFIG — paste your Supabase project details here
-     (Supabase → Project Settings → API → Project URL / anon public key)
+     (Supabase → Project Settings → API Keys → "Publishable key"; Project URL is on the project's Connect / Data API page)
      ================================================================ -->
 <script>
 window.STEPAWAY_CONFIG = window.STEPAWAY_CONFIG || {
   SUPABASE_URL: "https://YOUR-PROJECT-REF.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR-ANON-PUBLIC-KEY"
+  SUPABASE_ANON_KEY: "YOUR-ANON-PUBLIC-KEY"   // publishable key (sb_publishable_…) or legacy anon key (eyJ…)
 };
 </script>
 
@@ -358,7 +358,8 @@ async function rpc(fn, args={}){
   try{
     res = await fetch(`${CFG.SUPABASE_URL.replace(/\/$/,"")}/rest/v1/rpc/${fn}`, {
       method:"POST",
-      headers:{ "apikey":CFG.SUPABASE_ANON_KEY, "Authorization":`Bearer ${CFG.SUPABASE_ANON_KEY}`, "Content-Type":"application/json" },
+      // new "sb_publishable_…" keys go in the apikey header only; legacy anon keys (JWTs, "eyJ…") also go in Authorization
+      headers:{ "apikey":CFG.SUPABASE_ANON_KEY, ...(/^eyJ/.test(CFG.SUPABASE_ANON_KEY)?{"Authorization":`Bearer ${CFG.SUPABASE_ANON_KEY}`}:{}), "Content-Type":"application/json" },
       body: JSON.stringify(args)
     });
   }catch(e){ throw new Error("Can't reach the server. Check your internet connection."); }
